@@ -1,0 +1,221 @@
+name: "prepare"
+description: "Checkout, and optionally install C++ build prerequisites"
+
+# We CAN NOT directly use secrets eg $\{\{ secrets.SSH_KEY_MACHINE_USER_INTERSTELLAR_CI \}\} here
+# error: Unrecognized named-value: 'secrets'. Located at position 1 within expression: secrets.SSH_KEY_MACHINE_USER_INTERSTELLAR_CI
+# So we instead use an input
+# cf https://github.community/t/unrecognized-named-value-secrets-in-action-yml/207729
+# and https://github.community/t/action-doesnt-understand-the-secrets-syntax-copied-from-the-documentation/16644/3
+inputs:
+  ssh_key_input:
+    description: "SSH key of a MACHINE USER with access to all the org's repos"
+    required: true
+  # NOTE: https://github.com/actions/runner/issues/1483
+  # For now all inputs are string, so compare with "true" in "if" statements
+  install_cmake_and_ninja:
+    description: "Install CMake and Ninja"
+    required: false
+    default: "false"
+  install_ccache:
+    description: "Install ccache"
+    required: false
+    default: "true"
+  install_conan:
+    description: "Install Conan"
+    required: false
+    default: "true"
+
+runs:
+  using: "composite"
+  steps:
+    # https://github.com/actions/checkout
+    - uses: actions/checkout@v3
+      # why is this not done automatically??
+      # also for some reason we need to copy to another env var; INPUT_SSH_KEY_INPUT DOES NOT work
+      env:
+        SSH_KEY_ENV: ${{ inputs.ssh_key_input }}
+      with:
+        # recursive needed for api_circuits/api_garble b/c they have lib_circuits/lib_garble as deps, and those contains submodules
+        submodules: "recursive"
+        # SSH key of a MACHINE USER with access to all the org's repos
+        # ssh-key: ${{ inputs.ssh_key_input }}  # Unrecognized named-value: 'inputs'
+        ssh-key: ${{ env.SSH_KEY_ENV }}
+
+    ############################################################################
+
+    - name: Check if cmake already in PATH
+      if: fromJSON(inputs.install_cmake_and_ninja)
+      id: check-cmake-exists
+      run: |
+        echo "::set-output name=cmake-exists::$(command -v cmake &> /dev/null && echo 'true' || echo 'false')"
+      shell: bash
+
+    - name: Check if ninja already in PATH
+      if: fromJSON(inputs.install_cmake_and_ninja)
+      id: check-ninja-exists
+      run: |
+        echo "::set-output name=ninja-exists::$(command -v ninja &> /dev/null && echo 'true' || echo 'false')"
+      shell: bash
+
+    # "Using 'latest' branch, the most recent CMake and ninja are installed."
+    # NOTE: make sure it matches the version, if any, in cmake-build-and-test/action.yml
+    - name: install CMake and Ninja
+      uses: lukka/get-cmake@latest
+      if: fromJSON(inputs.install_cmake_and_ninja) && (!fromJSON(steps.check-cmake-exists.outputs.cmake-exists) || !fromJSON(steps.check-ninja-exists.outputs.ninja-exists))
+
+    ############################################################################
+
+    # hendrikmuhs/ccache-action: not doing anything really interesting,
+    # and more importantly: ccache is version from APT which is old and deprecated
+    # cf https://github.com/hendrikmuhs/ccache-action/blob/f3bbfde5b632a67f7bd66f4cbc0ff0cb1e87bc82/src/restore.ts#L43
+    # and https://github.com/hendrikmuhs/ccache-action/blob/f3bbfde5b632a67f7bd66f4cbc0ff0cb1e87bc82/src/restore.ts#L15
+    #
+    # - name: sccache
+    #   uses: hendrikmuhs/ccache-action@v1.2
+    #   if: ${{ fromJSON(inputs.install_sccache) }}
+    #   with:
+    #     # NOTE: default is ccache, but that uses version from APT which is old and deprecated
+    #     # TODO bench ccache vs sccache; if ccache is faster install latest manually? or from custom Docker?
+    #     variant: sccache
+    #     # TODO restore-keys, key, max-size?
+    #
+    - name: Check if ccache already in PATH
+      if: fromJSON(inputs.install_ccache)
+      id: check-ccache-exists
+      run: |
+        echo "::set-output name=ccache-exists::$(command -v ccache &> /dev/null && echo 'true' || echo 'false')"
+      shell: bash
+
+    - name: Install ccache custom prebuilt binary
+      if: fromJSON(inputs.install_ccache) && !fromJSON(steps.check-ccache-exists.outputs.ccache-exists)
+      run: |
+        wget https://github.com/Interstellar-Network/gh-actions/releases/download/ccache-4.6/ccache -O /usr/local/bin/ccache
+        chmod +x /usr/local/bin/ccache
+        ccache --show-config
+      shell: bash
+
+    - name: Setup env for ccache for our CMakePresets.json presets
+      if: fromJSON(inputs.install_ccache)
+      run: |
+        echo "ENV_CMAKE_C_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
+        echo "ENV_CMAKE_CXX_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
+      shell: bash
+
+    # write a kind of compiler_id for the cache key at the next step
+    - name: Set C++ compilerid
+      id: set-cpp-compilerid
+      run: |
+        echo "::set-output name=cpp-compilerid::$(realpath /usr/bin/cc)-$(cc -dumpversion)"
+      shell: bash
+
+    # IMPORTANT: DO NOT call this multiple time on the same host! cf "name: sccache"
+    - name: ccache
+      id: cache-ccache
+      if: fromJSON(inputs.install_ccache)
+      # using a fork that uploads even in case of failure
+      # really useful for *_circuits b/c if a test fail after 20+mins of compilation it is wasteful to discard the compilation
+      # uses: actions/cache@v3
+      uses: pat-s/always-upload-cache@v3
+      with:
+        # cache_dir = /home/runner/.cache/ccache
+        path: ~/.cache/ccache
+        # IMPORTANT: by default on a cache hit we get at restore time:
+        # "Cache restored successfully"
+        # "Cache restored from key: cache-Linux-/usr/bin/x86_64-linux-gnu-gcc-9-9"
+        # and in post job:
+        # "Cache hit occurred on the primary key cache-Linux-/usr/bin/x86_64-linux-gnu-gcc-9-9, not saving cache."
+        # b/c of isExactKeyMatch at https://github.com/actions/cache/blob/main/src/save.ts#L36
+        # Which means the cache is NOT updated; which is NOT AT ALL what we want.
+        # cf https://github.com/actions/cache/issues/171
+        # and https://github.com/actions/cache/issues/109
+        # So we SHOULD for last part of the key use something that changes at every job.
+        #
+        # NOTE: DO NOT use ${{ github.sha }}?
+        # Unable to reserve cache with key cache-Linux-/usr/bin/x86_64-linux-gnu-gcc-9-9-4b28f96a1993312ede7d10fe6ad0d4bc3251e0ad, another job may be creating this cache. More details: Cache already exists. Scope: refs/heads/add-ci, Key: cache-Linux-/usr/bin/x86_64-linux-gnu-gcc-9-9-4b28f96a1993312ede7d10fe6ad0d4bc3251e0ad, Version: b97fbe098767aae2aa5efb5d4f8da4e488678a6aaf72931965bfb19f3ef9e00a
+        key: cache-${{ runner.os }}-${{ steps.set-cpp-compilerid.outputs.cpp-compilerid }}-${{ github.sha }}
+        restore-keys: cache-${{ runner.os }}-${{ steps.set-cpp-compilerid.outputs.cpp-compilerid }}-
+
+    # MUST be after actions/cache@v3 else the stats are already empty
+    - name: Reset ccache stats
+      if: fromJSON(inputs.install_ccache)
+      run: |
+        ccache --zero
+      shell: bash
+
+    ############################################################################
+
+    - name: Check if conan already in PATH
+      if: fromJSON(inputs.install_ccache)
+      id: check-conan-exists
+      run: |
+        echo "::set-output name=conan-exists::$(command -v conan &> /dev/null && echo 'true' || echo 'false')"
+      shell: bash
+
+    - name: Install Conan from deb
+      if: fromJSON(inputs.install_conan) && !fromJSON(steps.check-conan-exists.outputs.conan-exists)
+      run: |
+        wget https://github.com/conan-io/conan/releases/latest/download/conan-ubuntu-64.deb -O /tmp/conan.deb
+        sudo apt-get install -y /tmp/conan.deb
+        rm /tmp/conan.deb
+      shell: bash
+
+    - name: Conan config
+      if: fromJSON(inputs.install_conan)
+      # without this:
+      #       ERROR: Not able to automatically detect '/usr/bin/cc' version
+      # WARN: Remotes registry file missing, creating default one in /home/runner/.conan/remotes.json
+      # ERROR: abseil/20211102.0: 'settings.compiler' value not defined
+      # CMake Error at build/conan.cmake:651 (message):
+      # NOTE: the version does NOT really matter, eg gcc 9 or gcc 10 would work b/c it would still download binaries
+      # but gcc vs clang DOES matter: if using clang here it would say "no bin available" and would try to compile instead...
+      # without version: that step would say "Found clang 13.0"
+      # and then at CMake step we get:
+      #   ERROR: Invalid setting '13' is not a valid 'settings.compiler.version' value.
+      #   Possible values are ['4.1', '4.4', '4.5', '4.6', '4.7', '4.8', '4.9', '5', '5.1', '5.2', '5.3', '5.4', '5.5', '6', '6.1', '6.2', '6.3', '6.4', '6.5', '7', '7.1', '7.2', '7.3', '7.4', '7.5', '8', '8.1', '8.2', '8.3', '8.4', '9', '9.1', '9.2', '9.3', '10', '10.1', '10.2', '10.3', '11', '11.1', '11.2', '12']
+      #
+      # IMPORTANT: to avoid
+      #  CMake Error at conanbuildinfo.cmake:403 (message):
+      # Detected a mismatch for the compiler version between your conan profile
+      # settings and CMake:
+      # Compiler version specified in your conan profile: 9
+      # Compiler version detected in CMake: 10.3
+      # compiler.version SHOULD match the one used as CC/CXX
+      run: |
+        conan profile new default --detect
+        conan profile update settings.compiler=gcc default
+        conan profile update settings.compiler.version=10 default
+        conan profile update settings.compiler.libcxx=libstdc++11 default
+      shell: bash
+
+    # cache /home/runner/.conan/XXX(only the packages?)
+    # cf also [CONAN CACHE CLEANUP]
+    # or https://github.com/conan-io/conan/pull/6287 ? https://github.com/conan-io/docs/blob/develop/configuration/download_cache.rst
+    - name: conan cache
+      id: cache-conan
+      if: fromJSON(inputs.install_conan)
+      # using a fork that uploads even in case of failure
+      # really useful for *_circuits b/c if a test fail after 20+mins of compilation it is wasteful to discard the compilation
+      # uses: actions/cache@v3
+      uses: pat-s/always-upload-cache@v3
+      with:
+        # DO NOT cache the profile else it messes with "conan profile update" above
+        path: |
+          ~/.conan/
+          !~/.conan/profiles/default
+        # IMPORTANT: by default on a cache hit we get at restore time:
+        # "Cache restored successfully"
+        # "Cache restored from key: cache-Linux-/usr/bin/x86_64-linux-gnu-gcc-9-9"
+        # and in post job:
+        # "Cache hit occurred on the primary key cache-Linux-/usr/bin/x86_64-linux-gnu-gcc-9-9, not saving cache."
+        # b/c of isExactKeyMatch at https://github.com/actions/cache/blob/main/src/save.ts#L36
+        # Which means the cache is NOT updated; which is NOT AT ALL what we want.
+        # cf https://github.com/actions/cache/issues/171
+        # and https://github.com/actions/cache/issues/109
+        # So we SHOULD for last part of the key use something that changes at every job.
+        #
+        # NOTE: DO NOT use ${{ github.sha }}?
+        # Unable to reserve cache with key cache-Linux-/usr/bin/x86_64-linux-gnu-gcc-9-9-4b28f96a1993312ede7d10fe6ad0d4bc3251e0ad, another job may be creating this cache. More details: Cache already exists. Scope: refs/heads/add-ci, Key: cache-Linux-/usr/bin/x86_64-linux-gnu-gcc-9-9-4b28f96a1993312ede7d10fe6ad0d4bc3251e0ad, Version: b97fbe098767aae2aa5efb5d4f8da4e488678a6aaf72931965bfb19f3ef9e00a
+        key: conan-${{ runner.os }}-${{ github.sha }}
+        restore-keys: conan-${{ runner.os }}-
+
+    # TODO mold? or lld? there is a GH action for mold

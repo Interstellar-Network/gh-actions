@@ -1,0 +1,138 @@
+name: "prepare-rust"
+description: "Additional preparations for Rust"
+
+inputs:
+  toolchain_profile:
+    description: "actions-rs/toolchain with: profile"
+    required: false
+    default: "minimal"
+  toolchain_toolchain:
+    description: "actions-rs/toolchain with: toolchain"
+    required: false
+    default: "stable"
+  toolchain_components:
+    description: "actions-rs/toolchain with: components, example: rustfmt, clippy"
+    required: false
+    default: ""
+  install_sccache:
+    description: "Install sccache"
+    required: false
+    default: "true"
+
+runs:
+  using: "composite"
+  steps:
+    # Swatinem/rust-cache: "selecting a toolchain either by action or manual `rustup` calls should happen
+    # before the plugin, as it uses the current rustc version as its cache key"
+    - uses: actions-rs/toolchain@v1
+      id: action-rs-toolchain
+      with:
+        profile: ${{ inputs.toolchain_profile }}
+        toolchain: ${{ inputs.toolchain_toolchain }}
+        components: ${{ inputs.toolchain_components }}
+        # TODO override? or default: true?
+        override: true
+
+    # https://github.com/actions-rs/toolchain#outputs
+    # Technically we could just use outputs.rustc b/c guaranteed to change for every new compiler/build
+    # but it is better to have human readable cache key to diagnose if something goes wrong
+    # So just strip whitespaces from "outputs.rustc" instead(which contains the hash)
+    - name: Set Rust compilerid
+      id: set-rust-compilerid
+      run: |
+        echo "::set-output name=rust-compilerid::$(echo '${{ steps.action-rs-toolchain.outputs.rustc }}' | sed 's/ //g')"
+      shell: bash
+
+    # cf prepare/action.yml for why not use hendrikmuhs/ccache-action
+    # MUST check if sscache already exists b/c prepare_rust CAN be called multiple time on the same host
+    # error: "mkdir: cannot create directory ‘/tmp/sscache’: File exists"
+    - name: Check if sccache already in PATH
+      if: fromJSON(inputs.install_sccache)
+      id: check-sccache-exists
+      run: |
+        echo "::set-output name=sccache-exists::$(command -v sccache &> /dev/null && echo 'true' || echo 'false')"
+      shell: bash
+
+    - name: Install sccache custom prebuilt binary
+      if: fromJSON(inputs.install_sccache) && !fromJSON(steps.check-sccache-exists.outputs.sccache-exists)
+      run: |
+        mkdir /tmp/sscache
+        cd /tmp/sscache
+        wget -c https://github.com/mozilla/sccache/releases/download/v0.2.15/sccache-v0.2.15-x86_64-unknown-linux-musl.tar.gz -O - | tar -xz --strip-components 1
+        chmod +x sccache
+        mv sccache /usr/local/bin/sccache
+        sccache --version
+      shell: bash
+
+    # NOTE sccache does not work with CARGO_INCREMENTAL=1; and in CI we SHOULD disable it anyway
+    - name: Setup env for sccache for Cargo/Rustc
+      if: fromJSON(inputs.install_sccache)
+      run: |
+        echo "RUSTC_WRAPPER=/usr/local/bin/sccache" >> $GITHUB_ENV
+        echo "CARGO_INCREMENTAL=0" >> $GITHUB_ENV
+      shell: bash
+
+    # IMPORTANT: DO NOT call this multiple time on the same host!
+    # Because rust is using different profile for eg cargo clippy(dev) and cargo test(test) that would make cache saving
+    # only the first one, and the second would get "Unable to reserve cache with key...another job may be creating this cache"
+    # Which on the next run would cause either "cargo clippy" OR "cargo test" to have a bunch of cache miss.
+    - name: sccache
+      if: fromJSON(inputs.install_sccache)
+      id: cache-sccache
+      # using a fork that uploads even in case of failure
+      # really useful for *_circuits b/c if a test fail after 20+mins of compilation it is wasteful to discard the compilation
+      # uses: actions/cache@v3
+      uses: pat-s/always-upload-cache@v3
+      with:
+        path: ~/.cache/sccache
+        # IMPORTANT: by default on a cache hit we get at restore time:
+        # "Cache restored successfully"
+        # "Cache restored from key: cache-Linux-/usr/bin/x86_64-linux-gnu-gcc-9-9"
+        # and in post job:
+        # "Cache hit occurred on the primary key cache-Linux-/usr/bin/x86_64-linux-gnu-gcc-9-9, not saving cache."
+        # b/c of isExactKeyMatch at https://github.com/actions/cache/blob/main/src/save.ts#L36
+        # Which means the cache is NOT updated; which is NOT AT ALL what we want.
+        # cf https://github.com/actions/cache/issues/171
+        # and https://github.com/actions/cache/issues/109
+        # So we SHOULD for last part of the key use something that changes at every job.
+        #
+        # NOTE: DO NOT use ${{ github.sha }}?
+        # Unable to reserve cache with key cache-Linux-/usr/bin/x86_64-linux-gnu-gcc-9-9-4b28f96a1993312ede7d10fe6ad0d4bc3251e0ad, another job may be creating this cache. More details: Cache already exists. Scope: refs/heads/add-ci, Key: cache-Linux-/usr/bin/x86_64-linux-gnu-gcc-9-9-4b28f96a1993312ede7d10fe6ad0d4bc3251e0ad, Version: b97fbe098767aae2aa5efb5d4f8da4e488678a6aaf72931965bfb19f3ef9e00a
+        key: sccache-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-${{ github.sha }}
+        restore-keys: sccache-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-
+
+    # MUST be after actions/cache@v3 else the stats are already empty
+    - name: Reset sccache stats
+      if: fromJSON(inputs.install_sccache)
+      run: |
+        sccache --zero-stats
+      shell: bash
+
+    # IMPORTANT: DO NOT call this multiple time on the same host! cf "name: sccache"
+    # TODO this or stock actions/cache?
+    # see https://github.com/Swatinem/rust-cache/blob/cb2cf0cc7c5198d3364b9630e2c3d457f160790c/src/common.ts#L108 for key
+    #
+    - uses: Swatinem/rust-cache@v1
+      with:
+        # TODO remove?
+        cache-on-failure: true
+        # TODO is this needed?
+        sharedKey: "rust-cache"
+    #
+    # - name: cargo cache
+    #   # using a fork that uploads even in case of failure
+    #   # really useful for *_circuits b/c if a test fail after 20+mins of compilation it is wasteful to discard the compilation
+    #   # uses: actions/cache@v3
+    #   uses: pat-s/always-upload-cache@v3
+    #   with:
+    #     # cf https://github.com/actions/cache/blob/main/examples.md#rust---cargo
+    #     # TODO target/ ? is this really a good idea? even more so if using sccache?
+    #     path: |
+    #       ~/.cargo/bin/
+    #       ~/.cargo/registry/index/
+    #       ~/.cargo/registry/cache/
+    #       ~/.cargo/git/db/
+    #     key: cargo-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.sha }}
+    #     restore-keys: |
+    #       cargo-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-${{ hashFiles('**/Cargo.lock') }}-
+    #       cargo-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-

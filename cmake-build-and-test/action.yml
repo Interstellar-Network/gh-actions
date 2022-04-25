@@ -1,0 +1,60 @@
+name: "cmake-build-and-test"
+description: "Run CMake with CMakePreset.json to configure, build and test C/C++ source code."
+
+inputs:
+  # same issue with 'github' context:
+  # "Unrecognized named-value: 'github'"
+  cmake_lists_txt_path_input:
+    description: "SSH key of a MACHINE USER with access to all the org's repos"
+    required: true
+    default: "${{ github.workspace }}/CMakeLists.txt"
+
+runs:
+  using: "composite"
+  steps:
+    # cf https://github.com/marketplace/actions/run-cmake
+    # and https://github.com/lukka/CppCMakeVcpkgTemplate/blob/main/.github/workflows/hosted-ninja-vcpkg_submod.yml
+    # TODO use Ninja Multi Config(and same when dev locally)
+    # - uses: lukka/run-cmake@v10
+    #   # valid inputs are ['cmakeListsTxtPath', 'configurePreset',
+    #   # 'buildPreset', 'testPreset', 'useShell', 'logCollectionRegExps',
+    #   # 'configurePresetCmdString', 'buildPresetCmdString',
+    #   # 'testPresetCmdString', 'runVcpkgEnvFormatString']
+    #   # why is this not done automatically??
+    #   # also for some reason we need to copy to another env var; INPUT_SSH_KEY_INPUT DOES NOT work
+    #   env:
+    #     ENV_CMAKE_LISTS_TXT_PATH: ${{ inputs.cmake_lists_txt_path_input }}
+    #   with:
+    #     cmakeListsTxtPath: "${{ env.ENV_CMAKE_LISTS_TXT_PATH }}"
+    #     configurePreset: "config-testing"
+    #     buildPreset: "build-debug"
+    #     testPreset: "test-debug"
+    #
+    - name: CMake configure
+      # TODO remove --trace-expand
+      run: |
+        cmake -S . -GNinja --preset=config-testing --trace-expand
+      shell: bash
+    - name: CMake build
+      # NOTE: "binaryDir" is in CMakePresets.json so you pass either "--build some-dir" or "--build --preset=some-preset"
+      run: |
+        cmake --build --preset=build-debug
+      shell: bash
+    - name: CTest
+      # TODO remove --verbose
+      run: |
+        ctest --preset=test-debug --verbose
+      shell: bash
+
+    # TODO move into separate action? ideally into a JS action "post" that setup ccache?
+    - name: Print ccache stats
+      run: |
+        ccache --show-stats || true
+      shell: bash
+
+    # [CONAN CACHE CLEANUP]
+    # cf https://github.com/conan-io/conan/issues/308
+    - name: CONAN CACHE CLEANUP
+      run: |
+        conan remove --build --src --force "*"
+      shell: bash
