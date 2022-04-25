@@ -66,4 +66,4 @@ runs:
         cmakeListsTxtPath: '${{ env.CMAKE_LISTS_TXT_PATH_ENV }}'
         configurePreset: ""
         buildPreset: ""
-        testPreset: ""
+        testPreset: "test-debug"
