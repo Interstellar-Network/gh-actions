@@ -8,8 +8,14 @@ description: 'Run CMake with CMakePreset.json to configure, build and test C/C++
 # and https://github.community/t/action-doesnt-understand-the-secrets-syntax-copied-from-the-documentation/16644/3
 inputs:
   ssh_key_input:
-     description: "SSH key of a MACHINE USER with access to all the org's repos"
-     required: true
+    description: "SSH key of a MACHINE USER with access to all the org's repos"
+    required: true
+  # same issue with 'githib' context:
+  # "Unrecognized named-value: 'github'"
+  cmake_lists_txt_path_input:
+    description: "SSH key of a MACHINE USER with access to all the org's repos"
+    required: true
+    default: '${{ github.workspace }}/CMakeLists.txt'
 
 on:
   push:
@@ -40,7 +46,7 @@ jobs:
         # 'configurePresetCmdString', 'buildPresetCmdString',
         # 'testPresetCmdString', 'runVcpkgEnvFormatString']
         with:
-          cmakeListsTxtPath: '${{ github.workspace }}/CMakeLists.txt'
+          cmakeListsTxtPath: '$INPUT_CMAKE_LISTS_TXT_PATH_INPUT'
           configurePreset: default
           buildPreset: default
           testPreset: default
