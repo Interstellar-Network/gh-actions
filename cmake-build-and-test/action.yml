@@ -64,6 +64,6 @@ runs:
         CMAKE_LISTS_TXT_PATH_ENV: ${{ inputs.cmake_lists_txt_path_input }}
       with:
         cmakeListsTxtPath: '${{ env.CMAKE_LISTS_TXT_PATH_ENV }}'
-        configurePreset: default
-        buildPreset: default
-        testPreset: default
+        configurePreset: ""
+        buildPreset: ""
+        testPreset: ""
