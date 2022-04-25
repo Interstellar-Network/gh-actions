@@ -45,7 +45,7 @@ runs:
         submodules: 'true'
         # SSH key of a MACHINE USER with access to all the org's repos
         # ssh-key: ${{ inputs.ssh_key_input }}  # Unrecognized named-value: 'inputs'
-        ssh-key: $SSH_KEY_ENV
+        ssh-key: ${{ env.SSH_KEY_ENV }}
 
     # "Using 'latest' branch, the most recent CMake and ninja are installed."
     - uses: lukka/get-cmake@latest
