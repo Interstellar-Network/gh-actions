@@ -23,6 +23,17 @@ on:
 runs:
   using: "composite"
   steps:
+    # DEBUG
+    - run: echo "INPUT_SSH_KEY_INPUT = $INPUT_SSH_KEY_INPUT"
+      shell: bash
+    - run: echo "inputs.ssh_key_input = ${{ inputs.ssh_key_input }}"
+      shell: bash
+    - run: echo "INPUT_SSH_KEY_INPUT2 = $INPUT_SSH_KEY_INPUT2"
+      shell: bash
+      # why is this not done automatically??
+      env:
+        INPUT_SSH_KEY_INPUT2: ${{ inputs.ssh_key_input }}
+
     # https://github.com/actions/checkout
     - uses: actions/checkout@v3
       # why is this not done automatically??
