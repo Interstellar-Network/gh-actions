@@ -37,14 +37,15 @@ runs:
     # https://github.com/actions/checkout
     - uses: actions/checkout@v3
       # why is this not done automatically??
+      # also for some reason we need to copy to another env var; INPUT_SSH_KEY_INPUT DOES NOT work
       env:
-        INPUT_SSH_KEY_INPUT: ${{ inputs.ssh_key_input }}
+        SSH_KEY_ENV: ${{ inputs.ssh_key_input }}
       with:
         # TODO recursive?
         submodules: 'true'
         # SSH key of a MACHINE USER with access to all the org's repos
         # ssh-key: ${{ inputs.ssh_key_input }}  # Unrecognized named-value: 'inputs'
-        ssh-key: $INPUT_SSH_KEY_INPUT
+        ssh-key: $SSH_KEY_ENV
 
     # "Using 'latest' branch, the most recent CMake and ninja are installed."
     - uses: lukka/get-cmake@latest
