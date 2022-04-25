@@ -1,0 +1,47 @@
+name: 'cmake-build-and-test'
+description: 'Run CMake with CMakePreset.json to configure, build and test C/C++ source code.'
+
+# We CAN NOT directly use secrets eg ${{ secrets.SSH_KEY_MACHINE_USER_INTERSTELLAR_CI }} here
+# error: Unrecognized named-value: 'secrets'. Located at position 1 within expression: secrets.SSH_KEY_MACHINE_USER_INTERSTELLAR_CI
+# So we instead use an input
+# cf https://github.community/t/unrecognized-named-value-secrets-in-action-yml/207729
+# and https://github.community/t/action-doesnt-understand-the-secrets-syntax-copied-from-the-documentation/16644/3
+inputs:
+  ssh_key_input:
+     description: "SSH key of a MACHINE USER with access to all the org's repos"
+     required: true
+
+on:
+  push:
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      # https://github.com/actions/checkout
+      - uses: actions/checkout@v3
+        with:
+          # TODO recursive?
+          submodules: 'true'
+          # SSH key of a MACHINE USER with access to all the org's repos
+          ssh-key: ${{ inputs.ssh_key_input }}
+
+      # "Using 'latest' branch, the most recent CMake and ninja are installed."
+      - uses: lukka/get-cmake@latest
+
+  test:
+    runs-on: ubuntu-latest
+      # cf https://github.com/marketplace/actions/run-cmake
+      # and https://github.com/lukka/CppCMakeVcpkgTemplate/blob/main/.github/workflows/hosted-ninja-vcpkg_submod.yml
+      # TODO use Ninja Multi Config(and same when dev locally)
+      - name: Run CMake
+        uses: lukka/run-cmake@v10
+        # valid inputs are ['cmakeListsTxtPath', 'configurePreset',
+        # 'buildPreset', 'testPreset', 'useShell', 'logCollectionRegExps',
+        # 'configurePresetCmdString', 'buildPresetCmdString',
+        # 'testPresetCmdString', 'runVcpkgEnvFormatString']
+        with:
+          cmakeListsTxtPath: '${{ github.workspace }}/CMakeLists.txt'
+          configurePreset: default
+          buildPreset: default
+          testPreset: default
