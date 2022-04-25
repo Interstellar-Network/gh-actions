@@ -25,6 +25,9 @@ runs:
   steps:
     # https://github.com/actions/checkout
     - uses: actions/checkout@v3
+      # why is this not done automatically??
+      env:
+        INPUT_SSH_KEY_INPUT: ${{ inputs.ssh_key_input }}
       with:
         # TODO recursive?
         submodules: 'true'
