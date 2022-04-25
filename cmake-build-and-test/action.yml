@@ -1,7 +1,7 @@
 name: 'cmake-build-and-test'
 description: 'Run CMake with CMakePreset.json to configure, build and test C/C++ source code.'
 
-# We CAN NOT directly use secrets eg ${{ secrets.SSH_KEY_MACHINE_USER_INTERSTELLAR_CI }} here
+# We CAN NOT directly use secrets eg $\{\{ secrets.SSH_KEY_MACHINE_USER_INTERSTELLAR_CI \}\} here
 # error: Unrecognized named-value: 'secrets'. Located at position 1 within expression: secrets.SSH_KEY_MACHINE_USER_INTERSTELLAR_CI
 # So we instead use an input
 # cf https://github.community/t/unrecognized-named-value-secrets-in-action-yml/207729
@@ -24,7 +24,8 @@ jobs:
           # TODO recursive?
           submodules: 'true'
           # SSH key of a MACHINE USER with access to all the org's repos
-          ssh-key: ${{ inputs.ssh_key_input }}
+          # ssh-key: ${{ inputs.ssh_key_input }}  # Unrecognized named-value: 'inputs'
+          ssh-key: $INPUT_SSH_KEY_INPUT
 
       # "Using 'latest' branch, the most recent CMake and ninja are installed."
       - uses: lukka/get-cmake@latest
