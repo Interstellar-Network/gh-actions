@@ -58,8 +58,12 @@ runs:
       # 'buildPreset', 'testPreset', 'useShell', 'logCollectionRegExps',
       # 'configurePresetCmdString', 'buildPresetCmdString',
       # 'testPresetCmdString', 'runVcpkgEnvFormatString']
+      # why is this not done automatically??
+      # also for some reason we need to copy to another env var; INPUT_SSH_KEY_INPUT DOES NOT work
+      env:
+        CMAKE_LISTS_TXT_PATH_ENV: ${{ inputs.cmake_lists_txt_path_input }}
       with:
-        cmakeListsTxtPath: '$INPUT_CMAKE_LISTS_TXT_PATH_INPUT'
+        cmakeListsTxtPath: '${{ env.CMAKE_LISTS_TXT_PATH_ENV }}'
         configurePreset: default
         buildPreset: default
         testPreset: default
