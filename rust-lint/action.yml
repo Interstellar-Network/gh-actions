@@ -30,8 +30,9 @@ runs:
       env:
         SSH_KEY_ENV: ${{ inputs.ssh_key_input }}
       with:
-        # TODO recursive?
-        submodules: 'true'
+        # recursive needed for api_circuits/api_garble b/c they have lib_circuits/lib_garble as deps, and those themselves
+        # have submodules(eg cmake, yosys) as deps
+        submodules: 'recursive'
         # SSH key of a MACHINE USER with access to all the org's repos
         # ssh-key: ${{ inputs.ssh_key_input }}  # Unrecognized named-value: 'inputs'
         ssh-key: ${{ env.SSH_KEY_ENV }}
