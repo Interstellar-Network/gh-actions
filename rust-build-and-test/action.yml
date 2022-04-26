@@ -24,7 +24,6 @@ runs:
   using: "composite"
   steps:
     # https://github.com/actions/checkout
-    # TODO DRY b/w all action.yml
     - uses: actions/checkout@v3
       # why is this not done automatically??
       # also for some reason we need to copy to another env var; INPUT_SSH_KEY_INPUT DOES NOT work
@@ -38,23 +37,23 @@ runs:
         ssh-key: ${{ env.SSH_KEY_ENV }}
 
     # "Using 'latest' branch, the most recent CMake and ninja are installed."
-    # NOTE: make sure it matches the version, if any, in rust-build-and-test/action.yml
+    # NOTE: make sure it matches the version, if any, in cmake-build-and-test/action.yml
     - uses: lukka/get-cmake@latest
 
-    # cf https://github.com/marketplace/actions/run-cmake
-    # and https://github.com/lukka/CppCMakeVcpkgTemplate/blob/main/.github/workflows/hosted-ninja-vcpkg_submod.yml
-    # TODO use Ninja Multi Config(and same when dev locally)
-    - uses: lukka/run-cmake@v10
-      # valid inputs are ['cmakeListsTxtPath', 'configurePreset',
-      # 'buildPreset', 'testPreset', 'useShell', 'logCollectionRegExps',
-      # 'configurePresetCmdString', 'buildPresetCmdString',
-      # 'testPresetCmdString', 'runVcpkgEnvFormatString']
-      # why is this not done automatically??
-      # also for some reason we need to copy to another env var; INPUT_SSH_KEY_INPUT DOES NOT work
-      env:
-        CMAKE_LISTS_TXT_PATH_ENV: ${{ inputs.cmake_lists_txt_path_input }}
+    - name: Install stable toolchain
+      uses: actions-rs/toolchain@v1
       with:
-        cmakeListsTxtPath: '${{ env.CMAKE_LISTS_TXT_PATH_ENV }}'
-        configurePreset: "config-testing"
-        buildPreset: "build-debug"
-        testPreset: "test-debug"
+        toolchain: stable
+
+    - name: Run cargo check
+      uses: actions-rs/cargo@v1
+      with:
+        command: check
+
+    - name: Run cargo test
+      uses: actions-rs/cargo@v1
+      with:
+        command: test
+
+    # TODO cargo install; cargo fmt; cargo clippy?
+    # do we call "cargo build --profile={{ matrix.build }}" manually or not needed?
