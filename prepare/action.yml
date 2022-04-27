@@ -70,4 +70,19 @@ runs:
         echo "ENV_CMAKE_CXX_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
       shell: bash
 
+    # write a kind of compiler_id for the cache key at the next step
+    - name: Set compilerid
+      id: set-compilerid
+      run: |
+        echo "::set-output name=compilerid::$(realpath /usr/bin/cc)-$(cc -dumpversion)"
+      shell: bash
+
+    - name: ccache
+      id: cache-ccache
+      uses: actions/cache@v3
+      with:
+        # cache_dir = /home/runner/.cache/ccache
+        path: ~/.cache/ccache
+        key: cache-${{ runner.os }}-${{ steps.set-compilerid.outputs.compilerid }}
+
     # TODO mold? or lld? there is a GH action for mold
