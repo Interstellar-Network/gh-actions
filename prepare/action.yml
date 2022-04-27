@@ -85,7 +85,17 @@ runs:
       with:
         # cache_dir = /home/runner/.cache/ccache
         path: ~/.cache/ccache
-        key: cache-${{ runner.os }}-${{ steps.set-compilerid.outputs.compilerid }}
+        # IMPORTANT: by default on a cache hit we get at restore time:
+        # "Cache restored successfully"
+        # "Cache restored from key: cache-Linux-/usr/bin/x86_64-linux-gnu-gcc-9-9"
+        # and in post job:
+        # "Cache hit occurred on the primary key cache-Linux-/usr/bin/x86_64-linux-gnu-gcc-9-9, not saving cache."
+        # b/c of isExactKeyMatch at https://github.com/actions/cache/blob/main/src/save.ts#L36
+        # Which means the cache is NOT updated; which is NOT AT ALL what we want.
+        # cf https://github.com/actions/cache/issues/171
+        # and https://github.com/actions/cache/issues/109
+        key: cache-${{ runner.os }}-${{ steps.set-compilerid.outputs.compilerid }}-${{ github.sha }}
+        restore-keys: cache-${{ runner.os }}-${{ steps.set-compilerid.outputs.compilerid }}-
 
     # MUST be after actions/cache@v3 else the stats are already empty
     - name: Reset ccache stats
