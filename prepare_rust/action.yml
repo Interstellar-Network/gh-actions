@@ -33,5 +33,3 @@ runs:
         cache-on-failure: true
         # TODO is this needed?
         sharedKey: "rust-cache"
-
-    # TODO add sccache/ccache

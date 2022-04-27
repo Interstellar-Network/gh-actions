@@ -16,6 +16,10 @@ inputs:
     description: "Install CMake and Ninja"
     required: false
     default: "false"
+  install_sccache:
+    description: "Install sccache"
+    required: false
+    default: "true"
 
 runs:
   using: "composite"
@@ -37,3 +41,18 @@ runs:
     # NOTE: make sure it matches the version, if any, in cmake-build-and-test/action.yml
     - uses: lukka/get-cmake@latest
       if: ${{ fromJSON(inputs.install_cmake_and_ninja) }}
+
+    - name: sccache
+      uses: hendrikmuhs/ccache-action@v1.2
+      if: ${{ fromJSON(inputs.install_sccache) }}
+      with:
+        # NOTE: default is ccache, but that uses version from APT which is old and deprecated
+        # TODO bench ccache vs sccache; if ccache is faster install latest manually? or from custom Docker?
+        variant: sccache
+        # TODO restore-keys, key, max-size?
+
+    - name: Setup env for sccache + internal CMakePresets.json
+      run: |
+        echo "ENV_CMAKE_C_COMPILER_LAUNCHER=sccache" >> $GITHUB_ENV
+        echo "ENV_CMAKE_CXX_COMPILER_LAUNCHER=sccache" >> $GITHUB_ENV
+      shell: bash
