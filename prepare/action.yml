@@ -78,7 +78,10 @@ runs:
 
     - name: ccache
       id: cache-ccache
-      uses: actions/cache@v3
+      # using a fork that uploads even in case of failure
+      # really useful for *_circuits b/c if a test fail after 20+mins of compilation it is wasteful to discard the compilation
+      # uses: actions/cache@v3
+      uses: pat-s/always-upload-cache@v3
       with:
         # cache_dir = /home/runner/.cache/ccache
         path: ~/.cache/ccache

@@ -30,5 +30,13 @@ runs:
       with:
         command: test
 
+    # TODO move into separate action? ideally into a JS action "post" that setup ccache?
+    - name: Print ccache stats
+      # display stats even if tests failed
+      if: always()
+      run: |
+        ccache --show-stats
+      shell: bash
+
     # TODO cargo install; cargo fmt; cargo clippy?
     # do we call "cargo build --profile={{ matrix.build }}" manually or not needed?
