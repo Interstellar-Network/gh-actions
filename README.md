@@ -15,3 +15,22 @@ Contains the various actions used by all repositories for the CI.
     - But OK for sccache b/c using prebuilt binary in this case
 
 TODO test "Rust sccache + action-cache" VS "Rust NO sccache + action-cache"
+
+### Bench: hot cache
+
+ie
+- `git commit --amend --no-edit --all`
+- `git push --force`
+
+#### lib_garble CI: sccache
+
+- 1: 1m 49s
+Generate project files with CMake
+⏱ elapsed: 38.783 seconds
+Build with CMake
+⏱ elapsed: 36.759 seconds
+- 2: 2m 8s
+Generate project files with CMake
+⏱ elapsed: 42.454 seconds
+Build with CMake
+⏱ elapsed: 39.522 seconds

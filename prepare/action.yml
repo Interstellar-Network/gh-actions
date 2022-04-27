@@ -42,17 +42,32 @@ runs:
     - uses: lukka/get-cmake@latest
       if: ${{ fromJSON(inputs.install_cmake_and_ninja) }}
 
-    - name: sccache
-      uses: hendrikmuhs/ccache-action@v1.2
-      if: ${{ fromJSON(inputs.install_sccache) }}
-      with:
-        # NOTE: default is ccache, but that uses version from APT which is old and deprecated
-        # TODO bench ccache vs sccache; if ccache is faster install latest manually? or from custom Docker?
-        variant: sccache
-        # TODO restore-keys, key, max-size?
-
-    - name: Setup env for sccache + internal CMakePresets.json
+    # hendrikmuhs/ccache-action: not doing anything really interesting,
+    # and more importantly: ccache is version from APT which is old and deprecated
+    # cf https://github.com/hendrikmuhs/ccache-action/blob/f3bbfde5b632a67f7bd66f4cbc0ff0cb1e87bc82/src/restore.ts#L43
+    # and https://github.com/hendrikmuhs/ccache-action/blob/f3bbfde5b632a67f7bd66f4cbc0ff0cb1e87bc82/src/restore.ts#L15
+    #
+    # - name: sccache
+    #   uses: hendrikmuhs/ccache-action@v1.2
+    #   if: ${{ fromJSON(inputs.install_sccache) }}
+    #   with:
+    #     # NOTE: default is ccache, but that uses version from APT which is old and deprecated
+    #     # TODO bench ccache vs sccache; if ccache is faster install latest manually? or from custom Docker?
+    #     variant: sccache
+    #     # TODO restore-keys, key, max-size?
+    #
+    - name: Install ccache custom prebuilt binary
       run: |
-        echo "ENV_CMAKE_C_COMPILER_LAUNCHER=sccache" >> $GITHUB_ENV
-        echo "ENV_CMAKE_CXX_COMPILER_LAUNCHER=sccache" >> $GITHUB_ENV
+        wget https://github.com/Interstellar-Network/gh-actions/releases/download/ccache-4.6/ccache -O /usr/local/bin/ccache
+        chmod +x /usr/local/bin/ccache
+        ccache --show-config
+        ccache --show-stats
       shell: bash
+
+    - name: Setup env for ccache/sccache + internal CMakePresets.json
+      run: |
+        echo "ENV_CMAKE_C_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
+        echo "ENV_CMAKE_CXX_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
+      shell: bash
+
+    # TODO mold? or lld? there is a GH action for mold
