@@ -8,6 +8,9 @@ inputs:
     description: "SSH key of a MACHINE USER with access to all the org's repos"
     required: true
     default: "${{ github.workspace }}/CMakeLists.txt"
+  ssh_key_input:
+    description: "cf prepare/action.yml inputs.ssh_key_input"
+    required: true
 
 runs:
   using: "composite"
@@ -15,6 +18,7 @@ runs:
     # TODO remove branch
     - uses: Interstellar-Network/gh-actions/prepare@add-cpp-ci
       with:
+        ssh_key_input: ${{ inputs.ssh_key_input }}
         install_cmake_and_ninja: true
 
     # cf https://github.com/marketplace/actions/run-cmake
