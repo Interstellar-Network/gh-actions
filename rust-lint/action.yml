@@ -1,58 +1,20 @@
-name: 'cmake-build-and-test'
-description: 'Run CMake with CMakePreset.json to configure, build and test C/C++ source code.'
-
-# We CAN NOT directly use secrets eg $\{\{ secrets.SSH_KEY_MACHINE_USER_INTERSTELLAR_CI \}\} here
-# error: Unrecognized named-value: 'secrets'. Located at position 1 within expression: secrets.SSH_KEY_MACHINE_USER_INTERSTELLAR_CI
-# So we instead use an input
-# cf https://github.community/t/unrecognized-named-value-secrets-in-action-yml/207729
-# and https://github.community/t/action-doesnt-understand-the-secrets-syntax-copied-from-the-documentation/16644/3
-inputs:
-  ssh_key_input:
-    description: "SSH key of a MACHINE USER with access to all the org's repos"
-    required: true
-  # same issue with 'github' context:
-  # "Unrecognized named-value: 'github'"
-  cmake_lists_txt_path_input:
-    description: "SSH key of a MACHINE USER with access to all the org's repos"
-    required: true
-    default: '${{ github.workspace }}/CMakeLists.txt'
-
-on:
-  push:
+name: "cmake-build-and-test"
+description: "Run CMake with CMakePreset.json to configure, build and test C/C++ source code."
 
 runs:
   using: "composite"
   steps:
-    # https://github.com/actions/checkout
-    - uses: actions/checkout@v3
-      # why is this not done automatically??
-      # also for some reason we need to copy to another env var; INPUT_SSH_KEY_INPUT DOES NOT work
-      env:
-        SSH_KEY_ENV: ${{ inputs.ssh_key_input }}
+    # TODO remove branch
+    - uses: Interstellar-Network/gh-actions/prepare@add-cpp-ci
       with:
-        # recursive needed for api_circuits/api_garble b/c they have lib_circuits/lib_garble as deps, and those themselves
-        # have submodules(eg cmake, yosys) as deps
-        submodules: 'recursive'
-        # SSH key of a MACHINE USER with access to all the org's repos
-        # ssh-key: ${{ inputs.ssh_key_input }}  # Unrecognized named-value: 'inputs'
-        ssh-key: ${{ env.SSH_KEY_ENV }}
+        install_cmake_and_ninja: true
 
-    # "Using 'latest' branch, the most recent CMake and ninja are installed."
-    # NOTE: make sure it matches the version, if any, in cmake-build-and-test/action.yml
-    - uses: lukka/get-cmake@latest
-
-    - name: Install stable toolchain
-      uses: actions-rs/toolchain@v1
+    # TODO remove branch
+    - uses: Interstellar-Network/gh-actions/prepare_rust@add-cpp-ci
       with:
-        toolchain: stable
-
-    - name: Install stable toolchain
-      uses: actions-rs/toolchain@v1
-      with:
-        profile: minimal
-        toolchain: stable
-        override: true
-        components: rustfmt, clippy
+        toolchain_toolchain: stable
+        toolchain_profile: minimal
+        toolchain_components: rustfmt, clippy
 
     - name: Run cargo fmt
       uses: actions-rs/cargo@v1

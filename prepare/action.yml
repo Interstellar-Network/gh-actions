@@ -1,0 +1,39 @@
+name: "prepare"
+description: "Checkout, and optionally install C++ build prerequisites"
+
+# We CAN NOT directly use secrets eg $\{\{ secrets.SSH_KEY_MACHINE_USER_INTERSTELLAR_CI \}\} here
+# error: Unrecognized named-value: 'secrets'. Located at position 1 within expression: secrets.SSH_KEY_MACHINE_USER_INTERSTELLAR_CI
+# So we instead use an input
+# cf https://github.community/t/unrecognized-named-value-secrets-in-action-yml/207729
+# and https://github.community/t/action-doesnt-understand-the-secrets-syntax-copied-from-the-documentation/16644/3
+inputs:
+  ssh_key_input:
+    description: "SSH key of a MACHINE USER with access to all the org's repos"
+    required: true
+  # NOTE: https://github.com/actions/runner/issues/1483
+  # For now all inputs are string, so compare with "true" in "if" statements
+  install_cmake_and_ninja:
+    description: "Install CMake and Ninja"
+    required: false
+    default: "false"
+
+runs:
+  using: "composite"
+  steps:
+    # https://github.com/actions/checkout
+    - uses: actions/checkout@v3
+      # why is this not done automatically??
+      # also for some reason we need to copy to another env var; INPUT_SSH_KEY_INPUT DOES NOT work
+      env:
+        SSH_KEY_ENV: ${{ inputs.ssh_key_input }}
+      with:
+        # TODO recursive?
+        submodules: "true"
+        # SSH key of a MACHINE USER with access to all the org's repos
+        # ssh-key: ${{ inputs.ssh_key_input }}  # Unrecognized named-value: 'inputs'
+        ssh-key: ${{ env.SSH_KEY_ENV }}
+
+    # "Using 'latest' branch, the most recent CMake and ninja are installed."
+    # NOTE: make sure it matches the version, if any, in cmake-build-and-test/action.yml
+    - uses: lukka/get-cmake@latest
+      if: ${{ fromJSON(inputs.install_cmake_and_ninja) }}

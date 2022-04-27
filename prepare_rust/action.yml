@@ -1,0 +1,32 @@
+name: "prepare-rust"
+description: "Additional preparations for Rust"
+
+inputs:
+  toolchain_profile:
+    description: "actions-rs/toolchain with: profile"
+    required: false
+    default: "minimal"
+  toolchain_toolchain:
+    description: "actions-rs/toolchain with: toolchain"
+    required: false
+    default: "stable"
+  toolchain_components:
+    description: "actions-rs/toolchain with: components, example: rustfmt, clippy"
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    # "selecting a toolchain either by action or manual `rustup` calls should happen
+    # before the plugin, as it uses the current rustc version as its cache key"
+    - uses: actions-rs/toolchain@v1
+      with:
+        profile: ${{ inputs.toolchain_profile }}
+        toolchain: ${{ inputs.toolchain_toolchain }}
+        components: ${{ inputs.toolchain_components }}
+
+    # TODO this or https://github.com/actions/cache/blob/main/examples.md#rust---cargo ?
+    - uses: Swatinem/rust-cache@v1
+
+    # TODO add sccache/ccache
