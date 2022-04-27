@@ -61,7 +61,6 @@ runs:
         wget https://github.com/Interstellar-Network/gh-actions/releases/download/ccache-4.6/ccache -O /usr/local/bin/ccache
         chmod +x /usr/local/bin/ccache
         ccache --show-config
-        ccache --show-stats
       shell: bash
 
     - name: Setup env for ccache/sccache + internal CMakePresets.json
@@ -84,5 +83,11 @@ runs:
         # cache_dir = /home/runner/.cache/ccache
         path: ~/.cache/ccache
         key: cache-${{ runner.os }}-${{ steps.set-compilerid.outputs.compilerid }}
+
+    # MUST be after actions/cache@v3 else the stats are already empty
+    - name: Reset ccache stats
+      run: |
+        ccache --zero
+      shell: bash
 
     # TODO mold? or lld? there is a GH action for mold

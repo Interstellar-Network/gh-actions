@@ -42,6 +42,8 @@ Generate project files with CMake
 ⏱ elapsed: 46.543 seconds
 Build with CMake
 ⏱ elapsed: 15.625 seconds
-- 2:
+- 2:  1m 50s
 Generate project files with CMake
+⏱ elapsed: 42.937 seconds
 Build with CMake
+⏱ elapsed: 16.336 seconds
