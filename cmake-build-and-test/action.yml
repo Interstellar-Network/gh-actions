@@ -38,3 +38,9 @@ runs:
         configurePreset: "config-testing"
         buildPreset: "build-debug"
         testPreset: "test-debug"
+
+    # TODO move into separate action? ideally into a JS action "post" that setup ccache?
+    - name: Print ccache stats
+      run: |
+        ccache --show-stats
+      shell: bash

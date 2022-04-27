@@ -22,7 +22,7 @@ ie
 - `git commit --amend --no-edit --all`
 - `git push --force`
 
-#### lib_garble CI: sccache
+#### lib_garble CI: sccache v0.2.15
 
 - 1: 1m 49s
 Generate project files with CMake
@@ -34,3 +34,14 @@ Generate project files with CMake
 ⏱ elapsed: 42.454 seconds
 Build with CMake
 ⏱ elapsed: 39.522 seconds
+
+#### lib_garble CI: ccache 4.6
+
+- 1:  2m 6s
+Generate project files with CMake
+⏱ elapsed: 46.543 seconds
+Build with CMake
+⏱ elapsed: 15.625 seconds
+- 2:
+Generate project files with CMake
+Build with CMake
