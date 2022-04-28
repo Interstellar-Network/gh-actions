@@ -37,11 +37,28 @@ runs:
         echo "::set-output name=rust-compilerid::$(echo '${{ steps.action-rs-toolchain.outputs.rustc }}' | sed 's/ //g')"
       shell: bash
 
-    # TODO this or https://github.com/actions/cache/blob/main/examples.md#rust---cargo ?
+    # TODO this or stock actions/cache?
     # see https://github.com/Swatinem/rust-cache/blob/cb2cf0cc7c5198d3364b9630e2c3d457f160790c/src/common.ts#L108 for key
-    - uses: Swatinem/rust-cache@v1
+    #
+    # - uses: Swatinem/rust-cache@v1
+    #   with:
+    #     # TODO remove?
+    #     cache-on-failure: true
+    #     # TODO is this needed?
+    #     sharedKey: "rust-cache"
+    # #
+    - name: cargo cache
+      # using a fork that uploads even in case of failure
+      # really useful for *_circuits b/c if a test fail after 20+mins of compilation it is wasteful to discard the compilation
+      # uses: actions/cache@v3
+      uses: pat-s/always-upload-cache@v3
       with:
-        # TODO remove?
-        cache-on-failure: true
-        # TODO is this needed?
-        sharedKey: "rust-cache"
+        # cf https://github.com/actions/cache/blob/main/examples.md#rust---cargo
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: cargo-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.sha }}
+        restore-keys: cargo-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-${{ hashFiles('**/Cargo.lock') }}-
