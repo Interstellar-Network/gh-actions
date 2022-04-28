@@ -21,12 +21,24 @@ runs:
     # Swatinem/rust-cache: "selecting a toolchain either by action or manual `rustup` calls should happen
     # before the plugin, as it uses the current rustc version as its cache key"
     - uses: actions-rs/toolchain@v1
+      id: action-rs-toolchain
       with:
         profile: ${{ inputs.toolchain_profile }}
         toolchain: ${{ inputs.toolchain_toolchain }}
         components: ${{ inputs.toolchain_components }}
 
+    # https://github.com/actions-rs/toolchain#outputs
+    # Technically we could just use outputs.rustc b/c guaranteed to change for every new compiler/build
+    # but it is better to have human readable cache key to diagnose if something goes wrong
+    # So just strip whitespaces from "outputs.rustc" instead(which contains the hash)
+    - name: Set Rust compilerid
+      id: set-rust-compilerid
+      run: |
+        echo "::set-output name=rust-compilerid::$(echo '${{ steps.action-rs-toolchain.outputs.rustc }}' | sed 's/ //g')"
+      shell: bash
+
     # TODO this or https://github.com/actions/cache/blob/main/examples.md#rust---cargo ?
+    # see https://github.com/Swatinem/rust-cache/blob/cb2cf0cc7c5198d3364b9630e2c3d457f160790c/src/common.ts#L108 for key
     - uses: Swatinem/rust-cache@v1
       with:
         # TODO remove?

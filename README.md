@@ -22,7 +22,12 @@ ie
 - `git commit --amend --no-edit --all`
 - `git push --force`
 
+NOTE for Rust: use /home/runner/.cargo/bin/cargo clippy -- -D warnings instead of cargo test (ie the first `Finished dev [unoptimized + debuginfo] target(s)`)
+and make sure `ccache --show-stats` is >99% cache hits else that would mix C++ compilation time with Rust's
+
 #### lib_garble CI: sccache v0.2.15
+
+[hot cache]
 
 - 1: 1m 49s
 Generate project files with CMake
@@ -37,6 +42,8 @@ Build with CMake
 
 #### lib_garble CI: ccache 4.6
 
+hot cache
+
 - 1:  2m 6s
 Generate project files with CMake
 ⏱ elapsed: 46.543 seconds
@@ -47,3 +54,29 @@ Generate project files with CMake
 ⏱ elapsed: 42.937 seconds
 Build with CMake
 ⏱ elapsed: 16.336 seconds
+
+#### api_circuits: Swatinem/rust-cache + ccache for C++ (NO sccache for Rust)
+
+hot cache
+
+- 1: 8m 14s
+/home/runner/.cargo/bin/cargo clippy -- -D warnings
+Finished dev [unoptimized + debuginfo] target(s) in 2m 25s
+Finished test [unoptimized + debuginfo] target(s) in 2m 14s
+- 2: 7m 47s
+/home/runner/.cargo/bin/cargo clippy -- -D warnings
+Finished dev [unoptimized + debuginfo] target(s) in 2m 14s
+Finished test [unoptimized + debuginfo] target(s) in 2m 04s
+
+#### api_garble: Swatinem/rust-cache + ccache for C++ (NO sccache for Rust)
+
+hot cache
+
+- 1:  4m 52s
+/home/runner/.cargo/bin/cargo clippy -- -D warnings
+Finished dev [unoptimized + debuginfo] target(s) in 1m 00s
+Finished test [unoptimized + debuginfo] target(s) in 1m 50s
+- 2:  5m 18s
+/home/runner/.cargo/bin/cargo clippy -- -D warnings
+Finished dev [unoptimized + debuginfo] target(s) in 1m 06s
+Finished test [unoptimized + debuginfo] target(s) in 2m 05s
