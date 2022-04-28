@@ -83,8 +83,24 @@ Finished test [unoptimized + debuginfo] target(s) in 2m 05s
 
 #### api_circuits: no cargo cache + ccache for C++ (NO sccache for Rust)
 
-first run = no cargo cache
+no cache at all for Rust(no sccache, no cargo cache)
+
+-  9m 40s
+/home/runner/.cargo/bin/cargo clippy -- -D warnings
+Finished dev [unoptimized + debuginfo] target(s) in 3m 36s
+/home/runner/.cargo/bin/cargo check
+Finished dev [unoptimized + debuginfo] target(s) in 2m 42s
+/home/runner/.cargo/bin/cargo test
+Finished test [unoptimized + debuginfo] target(s) in 1m 54s
 
 #### api_garble: no cargo cache + ccache for C++ (NO sccache for Rust)
 
-first run = no cargo cache
+no cache at all for Rust(no sccache, no cargo cache)
+
+- 7m 23s
+/home/runner/.cargo/bin/cargo clippy -- -D warnings
+Finished dev [unoptimized + debuginfo] target(s) in 2m 39s
+/home/runner/.cargo/bin/cargo check
+Finished dev [unoptimized + debuginfo] target(s) in 1m 49s
+/home/runner/.cargo/bin/cargo test
+Finished test [unoptimized + debuginfo] target(s) in 1m 50s
