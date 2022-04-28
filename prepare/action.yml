@@ -78,6 +78,7 @@ runs:
         echo "::set-output name=cpp-compilerid::$(realpath /usr/bin/cc)-$(cc -dumpversion)"
       shell: bash
 
+    # IMPORTANT: DO NOT call this multiple time on the same host! cf "name: sccache"
     - name: ccache
       id: cache-ccache
       # using a fork that uploads even in case of failure

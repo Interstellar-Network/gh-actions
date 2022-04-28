@@ -72,6 +72,10 @@ runs:
         echo "CARGO_INCREMENTAL=0" >> $GITHUB_ENV
       shell: bash
 
+    # IMPORTANT: DO NOT call this multiple time on the same host!
+    # Because rust is using different profile for eg cargo clippy(dev) and cargo test(test) that would make cache saving
+    # only the first one, and the second would get "Unable to reserve cache with key...another job may be creating this cache"
+    # Which on the next run would cause either "cargo clippy" OR "cargo test" to have a bunch of cache miss.
     - name: sccache
       if: fromJSON(inputs.install_sccache)
       id: cache-sccache
@@ -104,6 +108,7 @@ runs:
         sccache --zero-stats
       shell: bash
 
+    # IMPORTANT: DO NOT call this multiple time on the same host! cf "name: sccache"
     # TODO this or stock actions/cache?
     # see https://github.com/Swatinem/rust-cache/blob/cb2cf0cc7c5198d3364b9630e2c3d457f160790c/src/common.ts#L108 for key
     #
