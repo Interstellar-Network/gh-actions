@@ -104,3 +104,31 @@ Finished dev [unoptimized + debuginfo] target(s) in 2m 39s
 Finished dev [unoptimized + debuginfo] target(s) in 1m 49s
 /home/runner/.cargo/bin/cargo test
 Finished test [unoptimized + debuginfo] target(s) in 1m 50s
+
+#### api_circuits: cargo cache custom + ccache for C++ (NO sccache for Rust)
+
+Cache Size: ~1470 MB
+
+- 1: 5m 26s
+/home/runner/.cargo/bin/cargo clippy -- -D warnings
+Finished dev [unoptimized + debuginfo] target(s) in 32.24s
+/home/runner/.cargo/bin/cargo check
+Finished dev [unoptimized + debuginfo] target(s) in 12.85s
+/home/runner/.cargo/bin/cargo test
+Finished test [unoptimized + debuginfo] target(s) in 18.42s
+
+#### api_garble: cargo cache custom + ccache for C++ (NO sccache for Rust)
+
+Cache Size: ~1037 MB (1087541143 B)
+
+- 1:  4m 23s
+/home/runner/.cargo/bin/cargo clippy -- -D warnings
+Finished dev [unoptimized + debuginfo] target(s) in 29.93s
+/home/runner/.cargo/bin/cargo check
+Finished dev [unoptimized + debuginfo] target(s) in 5.30s
+/home/runner/.cargo/bin/cargo test
+Finished test [unoptimized + debuginfo] target(s) in 13.48s
+
+#### api_circuits: cargo cache custom NO target/ + ccache for C++ + sccache for Rust
+
+#### api_garble: cargo cache custom NO target/ + ccache for C++ + sccache for Rust
