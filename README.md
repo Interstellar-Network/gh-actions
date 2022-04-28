@@ -156,3 +156,17 @@ Finished test [unoptimized + debuginfo] target(s) in 55.67s
 Finished dev [unoptimized + debuginfo] target(s) in 1m 24s
 Finished dev [unoptimized + debuginfo] target(s) in 3.25s
 Finished test [unoptimized + debuginfo] target(s) in 51.58s
+
+#### api_circuits: rust-cache + ccache for C++ + sccache for Rust
+
+- 1:
+Finished dev [unoptimized + debuginfo] target(s) in 1m 34s
+Finished dev [unoptimized + debuginfo] target(s) in 3.74s
+Finished test [unoptimized + debuginfo] target(s) in 1m 04s
+
+#### api_garble: rust-cache + ccache for C++ + sccache for Rust
+
+- 1:
+Finished dev [unoptimized + debuginfo] target(s) in 53.73s
+Finished dev [unoptimized + debuginfo] target(s) in 4.47s
+Finished test [unoptimized + debuginfo] target(s) in 1m 03s

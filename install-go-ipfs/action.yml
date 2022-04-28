@@ -1,0 +1,24 @@
+name: "install-go-ipfs"
+description: "Install prebuilt binary go-ipfs"
+
+runs:
+  using: "composite"
+  steps:
+    # cf prepare/action.yml for why not use hendrikmuhs/ccache-action
+    # MUST check if sscache already exists b/c prepare_rust CAN be called multiple time on the same host
+    # error: "mkdir: cannot create directory ‘/tmp/sscache’: File exists"
+    - name: Check if ipfs already in PATH
+      id: check-ipfs-exists
+      run: |
+        echo "::set-output name=ipfs-exists::$(command -v ipfs &> /dev/null && echo 'true' || echo 'false')"
+      shell: bash
+
+    - name: Install ipfs prebuilt binary
+      if: (!fromJSON(steps.check-ipfs-exists.outputs.ipfs-exists))
+      run: |
+        mkdir /tmp/ipfs
+        cd /tmp/ipfs
+        wget -c https://github.com/ipfs/go-ipfs/releases/download/v0.12.2/go-ipfs_v0.12.2_linux-amd64.tar.gz -O - | tar -xz --strip-components 1
+        mv ipfs /usr/local/bin/ipfs
+        ipfs --version
+      shell: bash
