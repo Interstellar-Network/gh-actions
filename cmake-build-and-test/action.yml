@@ -42,5 +42,5 @@ runs:
     # TODO move into separate action? ideally into a JS action "post" that setup ccache?
     - name: Print ccache stats
       run: |
-        ccache --show-stats
+        ccache --show-stats || true
       shell: bash

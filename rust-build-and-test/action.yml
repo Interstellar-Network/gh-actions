@@ -35,8 +35,8 @@ runs:
       # display stats even if tests failed
       if: always()
       run: |
-        ccache --show-stats
-        sccache --show-stats
+        ccache --show-stats || true
+        sccache --show-stats || true
       shell: bash
 
     # TODO cargo install; cargo fmt; cargo clippy?
