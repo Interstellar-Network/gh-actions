@@ -98,7 +98,7 @@ runs:
         #
         # NOTE: DO NOT use ${{ github.sha }}
         # Unable to reserve cache with key cache-Linux-/usr/bin/x86_64-linux-gnu-gcc-9-9-4b28f96a1993312ede7d10fe6ad0d4bc3251e0ad, another job may be creating this cache. More details: Cache already exists. Scope: refs/heads/add-ci, Key: cache-Linux-/usr/bin/x86_64-linux-gnu-gcc-9-9-4b28f96a1993312ede7d10fe6ad0d4bc3251e0ad, Version: b97fbe098767aae2aa5efb5d4f8da4e488678a6aaf72931965bfb19f3ef9e00a
-        key: cache-${{ runner.os }}-${{ steps.set-cpp-compilerid.outputs.compilerid }}-${{ github.sha }}
+        key: cache-${{ runner.os }}-${{ steps.set-cpp-compilerid.outputs.cpp-compilerid }}-${{ github.sha }}
         restore-keys: cache-${{ runner.os }}-${{ steps.set-cpp-compilerid.outputs.cpp-compilerid }}-
 
     # MUST be after actions/cache@v3 else the stats are already empty
