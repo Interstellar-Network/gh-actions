@@ -80,3 +80,11 @@ Finished test [unoptimized + debuginfo] target(s) in 1m 50s
 /home/runner/.cargo/bin/cargo clippy -- -D warnings
 Finished dev [unoptimized + debuginfo] target(s) in 1m 06s
 Finished test [unoptimized + debuginfo] target(s) in 2m 05s
+
+#### api_circuits: no cargo cache + ccache for C++ (NO sccache for Rust)
+
+first run = no cargo cache
+
+#### api_garble: no cargo cache + ccache for C++ (NO sccache for Rust)
+
+first run = no cargo cache
