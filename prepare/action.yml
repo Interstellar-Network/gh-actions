@@ -39,8 +39,9 @@ runs:
 
     # "Using 'latest' branch, the most recent CMake and ninja are installed."
     # NOTE: make sure it matches the version, if any, in cmake-build-and-test/action.yml
-    - uses: lukka/get-cmake@latest
-      if: ${{ fromJSON(inputs.install_cmake_and_ninja) }}
+    - name: install CMake and Ninja
+      uses: lukka/get-cmake@latest
+      if: fromJSON(inputs.install_cmake_and_ninja)
 
     # hendrikmuhs/ccache-action: not doing anything really interesting,
     # and more importantly: ccache is version from APT which is old and deprecated
@@ -57,7 +58,7 @@ runs:
     #     # TODO restore-keys, key, max-size?
     #
     - name: Install ccache custom prebuilt binary
-      if: ${{ fromJSON(inputs.install_ccache) }}
+      if: fromJSON(inputs.install_ccache)
       run: |
         wget https://github.com/Interstellar-Network/gh-actions/releases/download/ccache-4.6/ccache -O /usr/local/bin/ccache
         chmod +x /usr/local/bin/ccache
@@ -65,7 +66,7 @@ runs:
       shell: bash
 
     - name: Setup env for ccache for our CMakePresets.json presets
-      if: ${{ fromJSON(inputs.install_ccache) }}
+      if: fromJSON(inputs.install_ccache)
       run: |
         echo "ENV_CMAKE_C_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
         echo "ENV_CMAKE_CXX_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
@@ -81,6 +82,7 @@ runs:
     # IMPORTANT: DO NOT call this multiple time on the same host! cf "name: sccache"
     - name: ccache
       id: cache-ccache
+      if: fromJSON(inputs.install_ccache)
       # using a fork that uploads even in case of failure
       # really useful for *_circuits b/c if a test fail after 20+mins of compilation it is wasteful to discard the compilation
       # uses: actions/cache@v3
@@ -106,6 +108,7 @@ runs:
 
     # MUST be after actions/cache@v3 else the stats are already empty
     - name: Reset ccache stats
+      if: fromJSON(inputs.install_ccache)
       run: |
         ccache --zero
       shell: bash
