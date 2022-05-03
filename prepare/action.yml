@@ -20,6 +20,10 @@ inputs:
     description: "Install ccache"
     required: false
     default: "true"
+  install_conan:
+    description: "Install Conan"
+    required: false
+    default: "true"
 
 runs:
   using: "composite"
@@ -112,5 +116,28 @@ runs:
       run: |
         ccache --zero
       shell: bash
+
+    - name: Install Conan from deb
+      if: fromJSON(inputs.install_conan)
+      run: |
+        wget https://github.com/conan-io/conan/releases/latest/download/conan-ubuntu-64.deb -O /tmp/conan.deb
+        sudo apt-get install -y /tmp/conan.deb
+        rm /tmp/conan.deb
+      shell: bash
+
+    - name: Conan config
+      if: fromJSON(inputs.install_conan)
+      # without this:
+      #       ERROR: Not able to automatically detect '/usr/bin/cc' version
+      # WARN: Remotes registry file missing, creating default one in /home/runner/.conan/remotes.json
+      # ERROR: abseil/20211102.0: 'settings.compiler' value not defined
+      # CMake Error at build/conan.cmake:651 (message):
+      run: |
+        conan profile new default --detect
+        conan profile update settings.compiler=gcc default
+        conan profile update settings.compiler.libcxx=libstdc++11 default
+      shell: bash
+
+      # TODO cache /home/runner/.conan/XXX(only the packages?)
 
     # TODO mold? or lld? there is a GH action for mold
