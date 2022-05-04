@@ -166,9 +166,16 @@ runs:
       # WARN: Remotes registry file missing, creating default one in /home/runner/.conan/remotes.json
       # ERROR: abseil/20211102.0: 'settings.compiler' value not defined
       # CMake Error at build/conan.cmake:651 (message):
+      # NOTE: the version does NOT really matter, eg gcc 9 or gcc 10 would work b/c it would still download binaries
+      # but gcc vs clang DOES matter: if using clang here it would say "no bin available" and would try to compile instead...
+      # without version: that step would say "Found clang 13.0"
+      # and then at CMake step we get:
+      #   ERROR: Invalid setting '13' is not a valid 'settings.compiler.version' value.
+      #   Possible values are ['4.1', '4.4', '4.5', '4.6', '4.7', '4.8', '4.9', '5', '5.1', '5.2', '5.3', '5.4', '5.5', '6', '6.1', '6.2', '6.3', '6.4', '6.5', '7', '7.1', '7.2', '7.3', '7.4', '7.5', '8', '8.1', '8.2', '8.3', '8.4', '9', '9.1', '9.2', '9.3', '10', '10.1', '10.2', '10.3', '11', '11.1', '11.2', '12']
       run: |
         conan profile new default --detect
         conan profile update settings.compiler=gcc default
+        conan profile update settings.compiler.version=9 default
         conan profile update settings.compiler.libcxx=libstdc++11 default
       shell: bash
 
