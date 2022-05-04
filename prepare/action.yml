@@ -43,11 +43,25 @@ runs:
 
     ############################################################################
 
+    - name: Check if cmake already in PATH
+      if: fromJSON(inputs.install_cmake_and_ninja)
+      id: check-cmake-exists
+      run: |
+        echo "::set-output name=cmake-exists::$(command -v cmake &> /dev/null && echo 'true' || echo 'false')"
+      shell: bash
+
+    - name: Check if ninja already in PATH
+      if: fromJSON(inputs.install_cmake_and_ninja)
+      id: check-ninja-exists
+      run: |
+        echo "::set-output name=ninja-exists::$(command -v ninja &> /dev/null && echo 'true' || echo 'false')"
+      shell: bash
+
     # "Using 'latest' branch, the most recent CMake and ninja are installed."
     # NOTE: make sure it matches the version, if any, in cmake-build-and-test/action.yml
     - name: install CMake and Ninja
       uses: lukka/get-cmake@latest
-      if: fromJSON(inputs.install_cmake_and_ninja)
+      if: fromJSON(inputs.install_cmake_and_ninja) && (!fromJSON(steps.check-cmake-exists.outputs.cmake-exists) || !fromJSON(steps.check-ninja-exists.outputs.ninja-exists))
 
     ############################################################################
 
