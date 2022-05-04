@@ -41,11 +41,15 @@ runs:
         # ssh-key: ${{ inputs.ssh_key_input }}  # Unrecognized named-value: 'inputs'
         ssh-key: ${{ env.SSH_KEY_ENV }}
 
+    ############################################################################
+
     # "Using 'latest' branch, the most recent CMake and ninja are installed."
     # NOTE: make sure it matches the version, if any, in cmake-build-and-test/action.yml
     - name: install CMake and Ninja
       uses: lukka/get-cmake@latest
       if: fromJSON(inputs.install_cmake_and_ninja)
+
+    ############################################################################
 
     # hendrikmuhs/ccache-action: not doing anything really interesting,
     # and more importantly: ccache is version from APT which is old and deprecated
@@ -61,8 +65,15 @@ runs:
     #     variant: sccache
     #     # TODO restore-keys, key, max-size?
     #
-    - name: Install ccache custom prebuilt binary
+    - name: Check if ccache already in PATH
       if: fromJSON(inputs.install_ccache)
+      id: check-ccache-exists
+      run: |
+        echo "::set-output name=ccache-exists::$(command -v ccache &> /dev/null && echo 'true' || echo 'false')"
+      shell: bash
+
+    - name: Install ccache custom prebuilt binary
+      if: fromJSON(inputs.install_ccache) && !fromJSON(steps.check-ccache-exists.outputs.ccache-exists)
       run: |
         wget https://github.com/Interstellar-Network/gh-actions/releases/download/ccache-4.6/ccache -O /usr/local/bin/ccache
         chmod +x /usr/local/bin/ccache
@@ -117,8 +128,17 @@ runs:
         ccache --zero
       shell: bash
 
+    ############################################################################
+
+    - name: Check if conan already in PATH
+      if: fromJSON(inputs.install_ccache)
+      id: check-conan-exists
+      run: |
+        echo "::set-output name=conan-exists::$(command -v conan &> /dev/null && echo 'true' || echo 'false')"
+      shell: bash
+
     - name: Install Conan from deb
-      if: fromJSON(inputs.install_conan)
+      if: fromJSON(inputs.install_conan) && !fromJSON(steps.check-conan-exists.outputs.conan-exists)
       run: |
         wget https://github.com/conan-io/conan/releases/latest/download/conan-ubuntu-64.deb -O /tmp/conan.deb
         sudo apt-get install -y /tmp/conan.deb
@@ -139,5 +159,7 @@ runs:
       shell: bash
 
       # TODO cache /home/runner/.conan/XXX(only the packages?)
+      # cf https://github.com/conan-io/conan/issues/308
+      # or https://github.com/conan-io/conan/pull/6287 ? https://github.com/conan-io/docs/blob/develop/configuration/download_cache.rst
 
     # TODO mold? or lld? there is a GH action for mold

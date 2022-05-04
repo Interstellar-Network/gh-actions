@@ -48,13 +48,13 @@ runs:
     # error: "mkdir: cannot create directory ‘/tmp/sscache’: File exists"
     - name: Check if sccache already in PATH
       if: fromJSON(inputs.install_sccache)
-      id: check-ssccache-exists
+      id: check-sccache-exists
       run: |
-        echo "::set-output name=ssccache-exists::$(command -v sccache &> /dev/null && echo 'true' || echo 'false')"
+        echo "::set-output name=sccache-exists::$(command -v sccache &> /dev/null && echo 'true' || echo 'false')"
       shell: bash
 
     - name: Install sccache custom prebuilt binary
-      if: fromJSON(inputs.install_sccache) && !fromJSON(steps.check-ssccache-exists.outputs.ssccache-exists)
+      if: fromJSON(inputs.install_sccache) && !fromJSON(steps.check-sccache-exists.outputs.sccache-exists)
       run: |
         mkdir /tmp/sscache
         cd /tmp/sscache
