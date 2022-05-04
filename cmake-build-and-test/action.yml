@@ -35,3 +35,10 @@ runs:
       run: |
         ccache --show-stats || true
       shell: bash
+
+    # [CONAN CACHE CLEANUP]
+    # cf https://github.com/conan-io/conan/issues/308
+    - name: CONAN CACHE CLEANUP
+      run: |
+        conan remove --build --src --force "*"
+      shell: bash
