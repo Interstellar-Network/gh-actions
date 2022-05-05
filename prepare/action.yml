@@ -172,10 +172,18 @@ runs:
       # and then at CMake step we get:
       #   ERROR: Invalid setting '13' is not a valid 'settings.compiler.version' value.
       #   Possible values are ['4.1', '4.4', '4.5', '4.6', '4.7', '4.8', '4.9', '5', '5.1', '5.2', '5.3', '5.4', '5.5', '6', '6.1', '6.2', '6.3', '6.4', '6.5', '7', '7.1', '7.2', '7.3', '7.4', '7.5', '8', '8.1', '8.2', '8.3', '8.4', '9', '9.1', '9.2', '9.3', '10', '10.1', '10.2', '10.3', '11', '11.1', '11.2', '12']
+      #
+      # IMPORTANT: to avoid
+      #  CMake Error at conanbuildinfo.cmake:403 (message):
+      # Detected a mismatch for the compiler version between your conan profile
+      # settings and CMake:
+      # Compiler version specified in your conan profile: 9
+      # Compiler version detected in CMake: 10.3
+      # compiler.version SHOULD match the one used as CC/CXX
       run: |
         conan profile new default --detect
         conan profile update settings.compiler=gcc default
-        conan profile update settings.compiler.version=9 default
+        conan profile update settings.compiler.version=10 default
         conan profile update settings.compiler.libcxx=libstdc++11 default
       shell: bash
 
