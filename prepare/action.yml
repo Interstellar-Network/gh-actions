@@ -198,8 +198,10 @@ runs:
       # uses: actions/cache@v3
       uses: pat-s/always-upload-cache@v3
       with:
-        # cache_dir = /home/runner/.cache/ccache
-        path: ~/.conan/
+        # DO NOT cache the profile else it messes with "conan profile update" above
+        path: |
+          ~/.conan/
+          !~/.conan/profiles/default
         # IMPORTANT: by default on a cache hit we get at restore time:
         # "Cache restored successfully"
         # "Cache restored from key: cache-Linux-/usr/bin/x86_64-linux-gnu-gcc-9-9"
