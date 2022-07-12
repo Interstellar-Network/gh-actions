@@ -42,6 +42,50 @@ runs:
         ssh-key: ${{ env.SSH_KEY_ENV }}
 
     ############################################################################
+    # install a recent compiler
+    # NOTE: it MAY already be done eg when using "container: image: ghcr.io/interstellar-network/ci-images/ci-base-cpp:latest"
+    # WARNING if you update eg Clang<->GCC, or its version;
+    # - you MUST also update "conan profile" calls below in this file
+    # - you must make sure "check-compiler-exists" job paths/version match with job "Install compiler"
+
+    - name: Check compiler
+      id: check-compiler-exists
+      run: |
+        echo "::set-output name=compiler-exists::$(command -v g++-10 &> /dev/null && echo 'true' || echo 'false')"
+      shell: bash
+
+    # WARNING: if you update
+    - name: Install compiler
+      if: (!fromJSON(steps.check-compiler-exists.outputs.compiler-exists))
+      # cf /ci-images/ci-base-cpp.dockerfile
+      # "build-essential would work too, but:
+      # - install gcc 9 instead of 10
+      # - also dep on make, and dpkg-XXX
+      # NOTE: g++ dep on gcc-N so this is fine, also libc-dev and libstdc++-10-dev"
+      run: |
+        sudo apt-get update && sudo apt-get install -y --no-install-recommends g++-10
+      shell: bash
+
+    # DO NOT use eg "if: (!fromJSON(steps.check-compiler-exists.outputs.compiler-exists))"
+    # b/c on GH's "ubuntu-latest" VM g++-10 is already installed, but the default is GCC9
+    # which is what CMake would use
+    # TODO? is it better to use env vars CC/CXX?
+    - name: Make the new compiler the default
+      # cf /ci-images/ci-base-cpp.dockerfile
+      # "build-essential would work too, but:
+      # - install gcc 9 instead of 10
+      # - also dep on make, and dpkg-XXX
+      # NOTE: g++ dep on gcc-N so this is fine, also libc-dev and libstdc++-10-dev"
+      run: |
+        sudo update-alternatives --install /usr/bin/cc cc /usr/bin/gcc-10 100
+        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 100
+        sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-10 100
+        cc --version
+        gcc --version
+        g++ --version
+      shell: bash
+
+    ############################################################################
 
     - name: Check if cmake already in PATH
       if: fromJSON(inputs.install_cmake_and_ninja)
