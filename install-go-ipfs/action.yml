@@ -19,6 +19,7 @@ runs:
         mkdir /tmp/ipfs
         cd /tmp/ipfs
         wget -c https://github.com/ipfs/go-ipfs/releases/download/v0.12.2/go-ipfs_v0.12.2_linux-amd64.tar.gz -O - | tar -xz --strip-components 1
-        mv ipfs /usr/local/bin/ipfs
+        chmod +x ipfs
+        sudo mv ipfs /usr/local/bin/ipfs
         ipfs --version
       shell: bash
