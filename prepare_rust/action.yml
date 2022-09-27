@@ -18,6 +18,10 @@ inputs:
     description: "Install sccache"
     required: false
     default: "true"
+  skip_action_toolchain:
+    description: "Skip using actions-rs/toolchain@v1; useful when using a rust-toolchain.toml"
+    required: false
+    default: "false"
 
 runs:
   using: "composite"
@@ -25,6 +29,7 @@ runs:
     # Swatinem/rust-cache: "selecting a toolchain either by action or manual `rustup` calls should happen
     # before the plugin, as it uses the current rustc version as its cache key"
     - uses: actions-rs/toolchain@v1
+      if: ${{ !fromJSON(inputs.skip_action_toolchain) }}
       id: action-rs-toolchain
       with:
         profile: ${{ inputs.toolchain_profile }}
@@ -32,6 +37,12 @@ runs:
         components: ${{ inputs.toolchain_components }}
         # TODO override? or default: true?
         override: true
+
+    # https://github.com/actions-rs/toolchain/issues/126
+    - name: Setup rust toolchain
+      if: ${{ fromJSON(inputs.skip_action_toolchain) }}
+      run: rustup show
+      shell: bash
 
     # https://github.com/actions-rs/toolchain#outputs
     # Technically we could just use outputs.rustc b/c guaranteed to change for every new compiler/build
