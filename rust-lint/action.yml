@@ -1,5 +1,15 @@
-name: "cmake-build-and-test"
+name: "rust-lint"
 description: "Run CMake with CMakePreset.json to configure, build and test C/C++ source code."
+
+inputs:
+  fmt_args:
+    description: "args passed to cargo fmt"
+    required: false
+    default: "-- --check"
+  clippy_args:
+    description: "args passed to cargo fmt"
+    required: false
+    default: "-- -D warnings"
 
 runs:
   using: "composite"
@@ -8,13 +18,13 @@ runs:
       uses: actions-rs/cargo@v1
       with:
         command: fmt
-        args: --all -- --check
+        args: ${{ inputs.fmt_args }}
 
     - name: Run cargo clippy
       uses: actions-rs/cargo@v1
       with:
         command: clippy
-        args: -- -D warnings
+        args: ${{ inputs.clippy_args }}
 
     # TODO move into separate action? ideally into a JS action "post" that setup ccache?
     - name: Print ccache/sccache stats
