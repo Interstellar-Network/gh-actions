@@ -1,5 +1,15 @@
-name: "cmake-build-and-test"
-description: "Run CMake with CMakePreset.json to configure, build and test C/C++ source code."
+name: "rust-build-and-test"
+description: "cargo check + cargo test"
+
+inputs:
+  check_args:
+    description: "args passed to cargo check"
+    required: false
+    default: ""
+  test_args:
+    description: "args passed to cargo test"
+    required: false
+    default: ""
 
 runs:
   using: "composite"
@@ -8,11 +18,13 @@ runs:
       uses: actions-rs/cargo@v1
       with:
         command: check
+        args: ${{ inputs.check_args }}
 
     - name: Run cargo test
       uses: actions-rs/cargo@v1
       with:
         command: test
+        args: ${{ inputs.test_args }}
 
     # TODO move into separate action? ideally into a JS action "post" that setup ccache?
     - name: Print ccache/sccache stats
