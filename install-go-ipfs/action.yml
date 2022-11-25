@@ -10,7 +10,7 @@ runs:
     - name: Check if ipfs already in PATH
       id: check-ipfs-exists
       run: |
-        echo "::set-output name=ipfs-exists::$(command -v ipfs &> /dev/null && echo 'true' || echo 'false')"
+        echo "ipfs-exists=$(command -v ipfs &> /dev/null && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
       shell: bash
 
     - name: Install ipfs prebuilt binary
