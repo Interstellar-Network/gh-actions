@@ -23,7 +23,7 @@ inputs:
   install_conan:
     description: "Install Conan"
     required: false
-    default: "true"
+    default: "false"
 
 runs:
   using: "composite"
