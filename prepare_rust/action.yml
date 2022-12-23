@@ -51,7 +51,7 @@ runs:
     - name: Set Rust compilerid
       id: set-rust-compilerid
       run: |
-        echo "::set-output name=rust-compilerid::$(echo '${{ steps.action-rs-toolchain.outputs.rustc }}' | sed 's/ //g')"
+        echo "rust-compilerid=$(echo '${{ steps.action-rs-toolchain.outputs.rustc }}' | sed 's/ //g')" >> $GITHUB_OUTPUT
       shell: bash
 
     # cf prepare/action.yml for why not use hendrikmuhs/ccache-action
@@ -61,7 +61,7 @@ runs:
       if: fromJSON(inputs.install_sccache)
       id: check-sccache-exists
       run: |
-        echo "::set-output name=sccache-exists::$(command -v sccache &> /dev/null && echo 'true' || echo 'false')"
+        echo "sccache-exists=$(command -v sccache &> /dev/null && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
       shell: bash
 
     - name: Install sccache custom prebuilt binary

@@ -52,9 +52,17 @@ runs:
         ccache --show-stats || true
       shell: bash
 
+    ############################################################################
+    - name: Check if conan installed
+      id: check-conan-exists
+      run: |
+        echo "conan-exists=$(command -v conan &> /dev/null && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
+      shell: bash
+
     # [CONAN CACHE CLEANUP]
     # cf https://github.com/conan-io/conan/issues/308
     - name: CONAN CACHE CLEANUP
+      if: fromJSON(steps.check-conan-exists.outputs.conan-exists)
       run: |
         conan remove --build --src --force "*"
       shell: bash
