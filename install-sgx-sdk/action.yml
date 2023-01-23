@@ -1,0 +1,69 @@
+name: "install-sgx-sdk"
+description: "Install Intel SGX SDK"
+
+inputs:
+  # NOTE: vs Intels docs: we DO NOT need the vars related to "Sixth, PSW"
+  sdk_url:
+    description: "default to 2.17"
+    required: false
+    default: "https://download.01.org/intel-sgx/sgx-linux/2.17.1/distro/ubuntu20.04-server/sgx_linux_x64_sdk_2.17.101.1.bin"
+  bin_url:
+    description: "default to 2.17"
+    required: false
+    default: "https://download.01.org/intel-sgx/sgx-linux/2.17/as.ld.objdump.r4.tar.gz"
+  binutils_dist:
+    description: "SHOULD match the internal path a dir in bin_url above"
+    required: false
+    default: "ubuntu20.04"
+  SDK_DIST:
+    description: "INTEL_BUILT"
+    required: false
+    default: "INTEL_BUILT"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Intel SGX
+      run: |
+        curl -o sdk.sh ${{ inputs.sdk_url }}
+        chmod a+x ./sdk.sh
+        echo -e 'no\n/opt/intel' | sudo ./sdk.sh
+        export SGX_SDK=/opt/intel/sgxsdk
+        rm ./sdk.sh
+
+        curl -o as.ld.objdump.r4.tar.gz ${{ inputs.bin_url }}
+        tar xzf as.ld.objdump.r4.tar.gz
+        sudo mkdir -p $SGX_SDK/binutils
+        sudo cp -r external/toolset/${{ inputs.binutils_dist }}/* $SGX_SDK/binutils
+        echo 'export PATH=$SGX_SDK/binutils:$PATH' | sudo tee -a /opt/intel/sgxsdk/environment
+        rm -rf ./external ./as.ld.objdump.r4.tar.gz
+      env:
+        SDK_DIST: "${{ inputs.SDK_DIST }}"
+      shell: bash
+
+    # cf core-primitives/enclave-api/build.rs and service/build.rs
+    - name: Finalize Intel SGX install
+      run: |
+        echo 'deb [signed-by=/etc/apt/keyrings/intel-sgx-keyring.asc arch=amd64] https://download.01.org/intel-sgx/sgx_repo/ubuntu jammy main' | sudo tee /etc/apt/sources.list.d/intel-sgx.list
+        wget -O - https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.key | sudo tee /etc/apt/keyrings/intel-sgx-keyring.asc > /dev/null
+        sudo apt-get update && sudo apt-get install -y libsgx-dcap-ql
+        sudo ln -s $(find /usr/lib -type f -name "*sgx_dcap_ql*") /usr/lib/x86_64-linux-gnu/libsgx_dcap_ql.so
+        sudo ln -s $(find /usr/lib -type f -name "*sgx_dcap_quoteverify*") /usr/lib/x86_64-linux-gnu/libsgx_dcap_quoteverify.so
+      shell: bash
+
+    # Normally we SHOULD just be able to "source /opt/intel/sgxsdk/environment"
+    # but this NOT supported by Github actions
+    # NOTE: the CRITICAL part is to APPEND `$SGX_SDK/binutils` to the PATH(the rest can be prepended)
+    - name: Activate SGX env
+      run: |
+        cat /opt/intel/sgxsdk/environment
+
+        echo "SGX_MODE=SW" >> $GITHUB_ENV
+
+        # source /opt/intel/sgxsdk/environment
+        export SGX_SDK=/opt/intel/sgxsdk
+        echo "SGX_SDK=/opt/intel/sgxsdk" >> $GITHUB_ENV
+        echo "PATH=$SGX_SDK/binutils:$PATH:$SGX_SDK/bin:$SGX_SDK/bin/x64" >> $GITHUB_ENV
+        echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH:$SGX_SDK/pkgconfig" >> $GITHUB_ENV
+        echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$SGX_SDK/sdk_libs" >> $GITHUB_ENV
+      shell: bash
