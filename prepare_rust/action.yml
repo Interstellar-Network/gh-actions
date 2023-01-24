@@ -2,47 +2,71 @@ name: "prepare-rust"
 description: "Additional preparations for Rust"
 
 inputs:
-  toolchain_profile:
-    description: "actions-rs/toolchain with: profile"
+  use_toolchain_toml:
+    description: "Ignore toolchain_* inputs and parse rust-toolchain.toml instead"
     required: false
-    default: "minimal"
-  toolchain_toolchain:
-    description: "actions-rs/toolchain with: toolchain"
+    default: "false"
+  # Typically rust-toolchain.toml is used from our SGX projects, and those are
+  # usually in enclave/ directory, or some other subdir.
+  toolchain_toml_path:
+    description: "PATH to rust-toolchain.toml; only applicable when 'use_toolchain_toml'"
+    required: false
+    default: "rust-toolchain.toml"
+  toolchain_channel:
+    description: "rust toolchain channel"
     required: false
     default: "stable"
+  # https://github.com/dtolnay/rust-toolchain ONLY install "minimal"
+  # But most of our workflows require fmt+clippy
+  # DO NOT set a "default" here b/c we MSUT NOT install components on "nightly"
+  # and for some reason GH actions CAN NOT override using an empty string("")
+  # https://github.com/actions/runner/issues/924
+  # eg: if the caller sets: 'toolchain_components: ""' -> here we have toolchain_components == default == eg "fmt,clippy"
   toolchain_components:
-    description: "actions-rs/toolchain with: components, example: rustfmt, clippy"
-    required: false
-    default: ""
+    description: "rust toolchain components"
+    required: true
   install_sccache:
     description: "Install sccache"
     required: false
     default: "true"
-  skip_action_toolchain:
-    description: "Skip using actions-rs/toolchain@v1; useful when using a rust-toolchain.toml"
-    required: false
-    default: "false"
 
 runs:
   using: "composite"
   steps:
+    ############################################################################
+    # NOTE:
+    # - actions-rs/toolchain is not maintained anymore
+    # - we COULD use https://github.com/dtolnay/rust-toolchain but:
+    #   - it DOES NOT(and WILL NOT) support rust-toolchain.toml
+    #   - it is installing(if needed) "rustup" but that is already installed on Github Runners
+    # --> we use a manually modified version of its action.yml copy-pasted next to this file
+    #
+
+    # Parse rust-toolchain.toml if inputs.use_toolchain_toml OR use inputs.toolchain_channel directly
+    #
+    # https://github.com/dtolnay/rust-toolchain/issues/12
+    # https://github.com/dtolnay/rust-toolchain/issues/29
+    # https://github.com/ralexstokes/ethereum-consensus/blob/main/.github/workflows/ci.yml#L16-L26
+    # NOTE: we CAN
+    - name: "Rust channel: read rust-toolchain.toml"
+      id: rust-toolchain
+      run: |
+        if [[ "${use_toolchain_toml}" == "true" ]]; then RUST_TOOLCHAIN=$(grep 'channel' ${{ inputs.toolchain_toml_path }} | awk '{split($0,a," = "); print a[2]}' | tr -d '"'); else RUST_TOOLCHAIN=${{ inputs.toolchain_channel }}; fi
+        echo "RUST_TOOLCHAIN=$RUST_TOOLCHAIN" >> $GITHUB_OUTPUT
+      shell: bash
+      env:
+        use_toolchain_toml: ${{ fromJSON(inputs.use_toolchain_toml) }}
+
+    # cf https://github.com/dtolnay/rust-toolchain/blob/master/action.yml for what inputs are possible
+    #
     # Swatinem/rust-cache: "selecting a toolchain either by action or manual `rustup` calls should happen
     # before the plugin, as it uses the current rustc version as its cache key"
-    - uses: actions-rs/toolchain@v1
-      if: ${{ !fromJSON(inputs.skip_action_toolchain) }}
-      id: action-rs-toolchain
+    - name: Install toolchain
+      uses: dtolnay/rust-toolchain@master
+      id: dtolnay-rust-toolchain
       with:
-        profile: ${{ inputs.toolchain_profile }}
-        toolchain: ${{ inputs.toolchain_toolchain }}
+        toolchain: ${{ steps.rust-toolchain.outputs.RUST_TOOLCHAIN }}
         components: ${{ inputs.toolchain_components }}
-        # TODO override? or default: true?
-        override: true
-
-    # https://github.com/actions-rs/toolchain/issues/126
-    - name: Setup rust toolchain
-      if: ${{ fromJSON(inputs.skip_action_toolchain) }}
-      run: rustup show
-      shell: bash
 
     # https://github.com/actions-rs/toolchain#outputs
     # Technically we could just use outputs.rustc b/c guaranteed to change for every new compiler/build
@@ -51,12 +75,18 @@ runs:
     - name: Set Rust compilerid
       id: set-rust-compilerid
       run: |
-        echo "rust-compilerid=$(echo '${{ steps.action-rs-toolchain.outputs.rustc }}' | sed 's/ //g')" >> $GITHUB_OUTPUT
+        echo "rust-compilerid=${{ steps.dtolnay-rust-toolchain.outputs.cachekey }}" >> $GITHUB_OUTPUT
       shell: bash
 
+    ############################################################################
     # cf prepare/action.yml for why not use hendrikmuhs/ccache-action
     # MUST check if sscache already exists b/c prepare_rust CAN be called multiple time on the same host
     # error: "mkdir: cannot create directory ‘/tmp/sscache’: File exists"
+    #
+    # NOTE: about cache: previously we used cache action(or rather pat-s/always-upload-cache@v3)
+    # to handle ~/.cache/sccache but now that "Swatinem/rust-cache@v2" has the option
+    # to take care of additional directories, we delegate.
+
     - name: Check if sccache already in PATH
       if: fromJSON(inputs.install_sccache)
       id: check-sccache-exists
@@ -85,42 +115,6 @@ runs:
         echo "CARGO_INCREMENTAL=0" >> $GITHUB_ENV
       shell: bash
 
-    # IMPORTANT: DO NOT call this multiple time on the same host!
-    # Because rust is using different profile for eg cargo clippy(dev) and cargo test(test) that would make cache saving
-    # only the first one, and the second would get "Unable to reserve cache with key...another job may be creating this cache"
-    # Which on the next run would cause either "cargo clippy" OR "cargo test" to have a bunch of cache miss.
-    - name: sccache
-      if: fromJSON(inputs.install_sccache)
-      id: cache-sccache
-      # using a fork that uploads even in case of failure
-      # really useful for *_circuits b/c if a test fail after 20+mins of compilation it is wasteful to discard the compilation
-      # uses: actions/cache@v3
-      uses: pat-s/always-upload-cache@v3
-      with:
-        path: ~/.cache/sccache
-        # IMPORTANT: by default on a cache hit we get at restore time:
-        # "Cache restored successfully"
-        # "Cache restored from key: cache-Linux-/usr/bin/x86_64-linux-gnu-gcc-9-9"
-        # and in post job:
-        # "Cache hit occurred on the primary key cache-Linux-/usr/bin/x86_64-linux-gnu-gcc-9-9, not saving cache."
-        # b/c of isExactKeyMatch at https://github.com/actions/cache/blob/main/src/save.ts#L36
-        # Which means the cache is NOT updated; which is NOT AT ALL what we want.
-        # cf https://github.com/actions/cache/issues/171
-        # and https://github.com/actions/cache/issues/109
-        # So we SHOULD for last part of the key use something that changes at every job.
-        #
-        # NOTE: DO NOT use ${{ github.sha }}?
-        # Unable to reserve cache with key cache-Linux-/usr/bin/x86_64-linux-gnu-gcc-9-9-4b28f96a1993312ede7d10fe6ad0d4bc3251e0ad, another job may be creating this cache. More details: Cache already exists. Scope: refs/heads/add-ci, Key: cache-Linux-/usr/bin/x86_64-linux-gnu-gcc-9-9-4b28f96a1993312ede7d10fe6ad0d4bc3251e0ad, Version: b97fbe098767aae2aa5efb5d4f8da4e488678a6aaf72931965bfb19f3ef9e00a
-        key: sccache-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-${{ github.sha }}
-        restore-keys: sccache-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-
-
-    # MUST be after actions/cache@v3 else the stats are already empty
-    - name: Reset sccache stats
-      if: fromJSON(inputs.install_sccache)
-      run: |
-        sccache --zero-stats
-      shell: bash
-
     # IMPORTANT: DO NOT call this multiple time on the same host! cf "name: sccache"
     # TODO this or stock actions/cache?
     # see https://github.com/Swatinem/rust-cache/blob/cb2cf0cc7c5198d3364b9630e2c3d457f160790c/src/common.ts#L108 for key
@@ -128,24 +122,15 @@ runs:
     - uses: Swatinem/rust-cache@v2
       with:
         cache-on-failure: true
+        # TODO only "if: fromJSON(inputs.install_sccache)"?
+        cache-directories: ~/.cache/sccache
 
-    # - name: cargo cache
-    #   # using a fork that uploads even in case of failure
-    #   # really useful for *_circuits b/c if a test fail after 20+mins of compilation it is wasteful to discard the compilation
-    #   # uses: actions/cache@v3
-    #   uses: pat-s/always-upload-cache@v3
-    #   with:
-    #     # cf https://github.com/actions/cache/blob/main/examples.md#rust---cargo
-    #     # TODO target/ ? is this really a good idea? even more so if using sccache?
-    #     path: |
-    #       ~/.cargo/bin/
-    #       ~/.cargo/registry/index/
-    #       ~/.cargo/registry/cache/
-    #       ~/.cargo/git/db/
-    #     key: cargo-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.sha }}
-    #     restore-keys: |
-    #       cargo-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-${{ hashFiles('**/Cargo.lock') }}-
-    #       cargo-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-
+    # MUST be after actions/cache@v3 else the stats are already empty
+    - name: Reset sccache stats
+      if: fromJSON(inputs.install_sccache)
+      run: |
+        sccache --zero-stats
+      shell: bash
 
     ############################################################################
     # NOTE: https://github.com/actions-rs/cargo is not maintained anymore
