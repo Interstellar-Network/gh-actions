@@ -149,3 +149,17 @@ runs:
     #     restore-keys: |
     #       cargo-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-${{ hashFiles('**/Cargo.lock') }}-
     #       cargo-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-
+
+    ############################################################################
+    # NOTE: https://github.com/actions-rs/cargo is not maintained anymore
+    # https://github.com/actions-rs/cargo/issues/222
+    # https://github.com/actions-rs/cargo/issues/216
+    # etc
+    #
+    # But that way just a simple call to "cargo" anyway so we do it directly
+    # (with the copy-pasted matcher)
+
+    # https://github.com/actions-rs/cargo/blob/master/.matchers/rust.json
+    - name: Setup cargo matcher
+      run: echo "::add-matcher::${{ github.action_path }}/rust.json"
+      shell: bash

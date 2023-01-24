@@ -15,16 +15,12 @@ runs:
   using: "composite"
   steps:
     - name: Run cargo check
-      uses: actions-rs/cargo@v1
-      with:
-        command: check
-        args: ${{ inputs.check_args }}
+      run: cargo check ${{ inputs.check_args }}
+      shell: bash
 
     - name: Run cargo test
-      uses: actions-rs/cargo@v1
-      with:
-        command: test
-        args: ${{ inputs.test_args }}
+      run: cargo test ${{ inputs.test_args }}
+      shell: bash
 
     # TODO move into separate action? ideally into a JS action "post" that setup ccache?
     - name: Print ccache/sccache stats

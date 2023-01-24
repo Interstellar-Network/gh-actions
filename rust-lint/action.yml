@@ -15,16 +15,12 @@ runs:
   using: "composite"
   steps:
     - name: Run cargo fmt
-      uses: actions-rs/cargo@v1
-      with:
-        command: fmt
-        args: ${{ inputs.fmt_args }}
+      run: cargo fmt ${{ inputs.fmt_args }}
+      shell: bash
 
     - name: Run cargo clippy
-      uses: actions-rs/cargo@v1
-      with:
-        command: clippy
-        args: ${{ inputs.clippy_args }}
+      run: cargo clippy ${{ inputs.clippy_args }}
+      shell: bash
 
     # TODO move into separate action? ideally into a JS action "post" that setup ccache?
     - name: Print ccache/sccache stats
