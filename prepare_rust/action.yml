@@ -125,13 +125,10 @@ runs:
     # TODO this or stock actions/cache?
     # see https://github.com/Swatinem/rust-cache/blob/cb2cf0cc7c5198d3364b9630e2c3d457f160790c/src/common.ts#L108 for key
     #
-    - uses: Swatinem/rust-cache@v1
+    - uses: Swatinem/rust-cache@v2
       with:
-        # TODO remove?
         cache-on-failure: true
-        # TODO is this needed?
-        sharedKey: "rust-cache"
-    #
+
     # - name: cargo cache
     #   # using a fork that uploads even in case of failure
     #   # really useful for *_circuits b/c if a test fail after 20+mins of compilation it is wasteful to discard the compilation
