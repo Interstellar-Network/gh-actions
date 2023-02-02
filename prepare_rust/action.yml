@@ -2,6 +2,10 @@ name: "prepare-rust"
 description: "Additional preparations for Rust"
 
 inputs:
+  working-directory:
+    description: "working-directory is only supported for 'run' action NOT 'uses' so we need to DIY"
+    required: false
+    default: "${{ github.workspace }}"
   use_toolchain_toml:
     description: "Ignore toolchain_* inputs and parse rust-toolchain.toml instead"
     required: false
@@ -54,6 +58,7 @@ runs:
         if [[ "${use_toolchain_toml}" == "true" ]]; then RUST_TOOLCHAIN=$(grep 'channel' ${{ inputs.toolchain_toml_path }} | awk '{split($0,a," = "); print a[2]}' | tr -d '"'); else RUST_TOOLCHAIN=${{ inputs.toolchain_channel }}; fi
         echo "RUST_TOOLCHAIN=$RUST_TOOLCHAIN" >> $GITHUB_OUTPUT
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       env:
         use_toolchain_toml: ${{ fromJSON(inputs.use_toolchain_toml) }}
 
@@ -77,6 +82,7 @@ runs:
       run: |
         echo "rust-compilerid=${{ steps.dtolnay-rust-toolchain.outputs.cachekey }}" >> $GITHUB_OUTPUT
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
 
     ############################################################################
     # cf prepare/action.yml for why not use hendrikmuhs/ccache-action
@@ -93,6 +99,7 @@ runs:
       run: |
         echo "sccache-exists=$(command -v sccache &> /dev/null && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
 
     - name: Install sccache custom prebuilt binary
       if: fromJSON(inputs.install_sccache) && !fromJSON(steps.check-sccache-exists.outputs.sccache-exists)
@@ -106,6 +113,7 @@ runs:
       env:
         SSCACHE_VERSION: 0.3.3
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
 
     # NOTE sccache does not work with CARGO_INCREMENTAL=1; and in CI we SHOULD disable it anyway
     - name: Setup env for sccache for Cargo/Rustc
@@ -114,6 +122,7 @@ runs:
         echo "RUSTC_WRAPPER=/usr/local/bin/sccache" >> $GITHUB_ENV
         echo "CARGO_INCREMENTAL=0" >> $GITHUB_ENV
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
 
     # IMPORTANT: DO NOT call this multiple time on the same host! cf "name: sccache"
     # TODO this or stock actions/cache?
@@ -122,6 +131,10 @@ runs:
     - uses: Swatinem/rust-cache@v2
       with:
         cache-on-failure: true
+        # "Determines whether workspace `target` directories are cached."
+        # "If `false`, only the cargo registry will be cached."
+        # "default: "true""
+        cache-targets: "${{ inputs.working-directory }}/target/"
         # TODO only "if: fromJSON(inputs.install_sccache)"?
         cache-directories: ~/.cache/sccache
 
@@ -131,6 +144,7 @@ runs:
       run: |
         sccache --zero-stats
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
 
     ############################################################################
     # NOTE: https://github.com/actions-rs/cargo is not maintained anymore
@@ -145,3 +159,4 @@ runs:
     - name: Setup cargo matcher
       run: echo "::add-matcher::${{ github.action_path }}/rust.json"
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
