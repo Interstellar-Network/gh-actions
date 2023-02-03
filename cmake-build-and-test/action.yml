@@ -2,6 +2,10 @@ name: "cmake-build-and-test"
 description: "Run CMake with CMakePreset.json to configure, build and test C/C++ source code."
 
 inputs:
+  working-directory:
+    description: "working-directory is only supported for 'run' action NOT 'uses' so we need to DIY"
+    required: false
+    default: "${{ github.workspace }}"
   # same issue with 'github' context:
   # "Unrecognized named-value: 'github'"
   cmake_lists_txt_path_input:
@@ -35,22 +39,28 @@ runs:
       run: |
         cmake -S . -GNinja --preset=config-testing --trace-expand
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
+
     - name: CMake build
       # NOTE: "binaryDir" is in CMakePresets.json so you pass either "--build some-dir" or "--build --preset=some-preset"
       run: |
         cmake --build --preset=build-debug
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
+
     - name: CTest
       # TODO remove --verbose
       run: |
         ctest --preset=test-debug --verbose
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
 
     # TODO move into separate action? ideally into a JS action "post" that setup ccache?
     - name: Print ccache stats
       run: |
         ccache --show-stats || true
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
 
     ############################################################################
     - name: Check if conan installed
@@ -58,6 +68,7 @@ runs:
       run: |
         echo "conan-exists=$(command -v conan &> /dev/null && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
 
     # [CONAN CACHE CLEANUP]
     # cf https://github.com/conan-io/conan/issues/308
@@ -66,3 +77,4 @@ runs:
       run: |
         conan remove --build --src --force "*"
       shell: bash
+      working-directory: ${{ inputs.working-directory }}

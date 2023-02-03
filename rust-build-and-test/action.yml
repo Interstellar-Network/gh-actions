@@ -2,6 +2,10 @@ name: "rust-build-and-test"
 description: "cargo check + cargo test"
 
 inputs:
+  working-directory:
+    description: "working-directory is only supported for 'run' action NOT 'uses' so we need to DIY"
+    required: false
+    default: "${{ github.workspace }}"
   check_args:
     description: "args passed to cargo check"
     required: false
@@ -15,16 +19,14 @@ runs:
   using: "composite"
   steps:
     - name: Run cargo check
-      uses: actions-rs/cargo@v1
-      with:
-        command: check
-        args: ${{ inputs.check_args }}
+      run: cargo check ${{ inputs.check_args }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
 
     - name: Run cargo test
-      uses: actions-rs/cargo@v1
-      with:
-        command: test
-        args: ${{ inputs.test_args }}
+      run: cargo test ${{ inputs.test_args }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
 
     # TODO move into separate action? ideally into a JS action "post" that setup ccache?
     - name: Print ccache/sccache stats
@@ -34,6 +36,7 @@ runs:
         ccache --show-stats || true
         sccache --show-stats || true
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
 
     # TODO cargo install; cargo fmt; cargo clippy?
     # do we call "cargo build --profile={{ matrix.build }}" manually or not needed?

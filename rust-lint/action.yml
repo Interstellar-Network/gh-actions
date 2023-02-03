@@ -2,6 +2,10 @@ name: "rust-lint"
 description: "Run CMake with CMakePreset.json to configure, build and test C/C++ source code."
 
 inputs:
+  working-directory:
+    description: "working-directory is only supported for 'run' action NOT 'uses' so we need to DIY"
+    required: false
+    default: "${{ github.workspace }}"
   fmt_args:
     description: "args passed to cargo fmt"
     required: false
@@ -15,16 +19,14 @@ runs:
   using: "composite"
   steps:
     - name: Run cargo fmt
-      uses: actions-rs/cargo@v1
-      with:
-        command: fmt
-        args: ${{ inputs.fmt_args }}
+      run: cargo fmt ${{ inputs.fmt_args }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
 
     - name: Run cargo clippy
-      uses: actions-rs/cargo@v1
-      with:
-        command: clippy
-        args: ${{ inputs.clippy_args }}
+      run: cargo clippy ${{ inputs.clippy_args }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
 
     # TODO move into separate action? ideally into a JS action "post" that setup ccache?
     - name: Print ccache/sccache stats
@@ -34,6 +36,7 @@ runs:
         ccache --show-stats || true
         sccache --show-stats || true
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
 
     # TODO cargo install
     # do we call "cargo build --profile={{ matrix.build }}" manually or not needed?

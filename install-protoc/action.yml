@@ -1,0 +1,28 @@
+name: "install-protoc"
+description: "Install Intel SGX SDK"
+
+inputs:
+  protoc_linux-x86_64_url:
+    description: "URL of the desired protoc prebuilt binaries"
+    required: false
+    default: "https://github.com/protocolbuffers/protobuf/releases/download/v21.12/protoc-21.12-linux-x86_64.zip"
+
+runs:
+  using: "composite"
+  steps:
+    ##########################################################################
+    # NOTE "protoc-VERSION-HOST.zip"(contains protoc itself)
+    # and "protobuf-cpp-VERSION.tar.gz" contains the source code for eg "src/google/protobuf/port_def.inc"
+    # What we download in CI, and what shared/rust/circuit_evaluate/build.rs expects SHOULD MATCH!
+    # DO NOT change the structure, else build.rs will fail!
+    #
+    # Needed for at least libp2p
+    - name: Install protoc prebuilt binary
+      run: |
+        mkdir /home/runner/protoc
+        cd /home/runner/protoc
+        wget ${{ inputs.protoc_linux-x86_64_url }} -O prebuilt.zip
+        unzip prebuilt.zip
+        rm prebuilt.zip
+        echo "PROTOC=/home/runner/protoc/bin/protoc" >> $GITHUB_ENV
+      shell: bash
