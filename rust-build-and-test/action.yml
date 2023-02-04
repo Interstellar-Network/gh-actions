@@ -14,6 +14,11 @@ inputs:
     description: "args passed to cargo test"
     required: false
     default: ""
+  test_timeout_seconds:
+    description: "timeout for: cargo test [run only, no compilation]"
+    required: false
+    # 60s * 5 = 5 minutes
+    default: "300"
 
 runs:
   using: "composite"
@@ -23,8 +28,15 @@ runs:
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
-    - name: Run cargo test
-      run: cargo test ${{ inputs.test_args }}
+    # Split compilation and test run
+    # Allows to set a reasonably short timeout for tests; but without timing out the whole CI if the compilation takes
+    # a while(ie cache not working b/c too old, new Rust version, etc)
+    - name: cargo test compile [ie --no-run]
+      run: cargo test --no-run ${{ inputs.test_args }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+    - name: cargo test run
+      run: timeout ${{ inputs.test_timeout_seconds }} sh -c "cargo test ${{ inputs.test_args }}"
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
