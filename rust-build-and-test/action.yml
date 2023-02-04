@@ -6,10 +6,6 @@ inputs:
     description: "working-directory is only supported for 'run' action NOT 'uses' so we need to DIY"
     required: false
     default: "${{ github.workspace }}"
-  check_args:
-    description: "args passed to cargo check"
-    required: false
-    default: ""
   test_args:
     description: "args passed to cargo test"
     required: false
@@ -23,11 +19,6 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Run cargo check
-      run: cargo check ${{ inputs.check_args }}
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-
     # Split compilation and test run
     # Allows to set a reasonably short timeout for tests; but without timing out the whole CI if the compilation takes
     # a while(ie cache not working b/c too old, new Rust version, etc)
@@ -45,8 +36,8 @@ runs:
       # display stats even if tests failed
       if: always()
       run: |
-        ccache --show-stats || true
-        sccache --show-stats || true
+        ccache --show-stats || echo "ccache not found!"
+        sccache --show-stats || echo "ccache sccache found!"
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 

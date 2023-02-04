@@ -23,6 +23,7 @@ runs:
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
+    # NOTE: cargo check: clippy internally runs "cargo check" so no point in doing it manually
     - name: Run cargo clippy
       run: cargo clippy ${{ inputs.clippy_args }}
       shell: bash
@@ -33,8 +34,8 @@ runs:
       # display stats even if tests failed
       if: always()
       run: |
-        ccache --show-stats || true
-        sccache --show-stats || true
+        ccache --show-stats || echo "ccache not found!"
+        sccache --show-stats || echo "ccache sccache found!"
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
