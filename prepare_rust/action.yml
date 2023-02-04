@@ -33,6 +33,75 @@ inputs:
     description: "Install sccache"
     required: false
     default: "true"
+  # passed to https://github.com/Swatinem/rust-cache#example-usage
+  # NOTE cf https://github.com/Swatinem/rust-cache/blob/master/src/config.ts#L49
+  # It's an either/or situation: "This uses either the `shared-key` input, or the `key` input combined with the `job` key."
+  # So for our use cache setting eg "rust-cache-key": REPLACEME_ANDROID_TARGET(from matrix strategy) SHOULD be enough.
+  #
+  # "A cache key that is used instead of the automatic `job`-based key,
+  # and is stable over multiple jobs."
+  # default: empty
+  rust-cache-shared-key:
+    description: "Swatinem/rust-cache shared-key"
+    required: false
+    default: ""
+  # "An additional cache key that is added alongside the automatic `job`-based
+  # cache key and can be used to further differentiate jobs."
+  # default: empty
+  rust-cache-key:
+    description: "Swatinem/rust-cache key"
+    required: false
+    default: ""
+  # "A whitespace separated list of env-var *prefixes* who's value contributes
+  # to the environment cache key.
+  # The env-vars are matched by *prefix*, so the default `RUST` var will
+  # match all of `RUSTC`, `RUSTUP_*`, `RUSTFLAGS`, `RUSTDOC_*`, etc."
+  # default: "CARGO CC CFLAGS CXX CMAKE RUST"
+  rust-cache-env-var:
+    description: "Swatinem/rust-cache env-var"
+    required: false
+    default: ""
+
+################################################################################
+# ABOUT CACHE(sccache)
+# Swatinem cache DOES NOT update the cache(never!)
+# And its logic make it depends on basically just Cargo.toml and Cargo.lock
+#
+# ## ONE
+# This is fine, but it means that when dev pipelines we may end up uploading
+# a cache which is useless, and if that is the cache it MUST be cleared manually.
+# eg scenario:
+# - first run in a branch: a bad "working-directory" is given by the caller
+# - the cache will be keyed by Cargo.lock/.toml, and uploaded at the end of the job
+#   but it will be empty
+# - the caller changes to the correct CWD
+# - in Post Run Post job cleanup. for "Cache Configuration" it will say: "Cache up-to-date."
+# -> the cache will only be useless for this branch until expiration or manual cleanup
+#
+# ## TWO
+# The same issue also happens when compiling for multiple targets!
+# Swatinem default env vars: "default: "CARGO CC CFLAGS CXX CMAKE RUST""
+# But that means the FIRST --target built will be the cache; and all the other ones
+# will NOT use a valid Sccache's cache...
+# eg if we have a matrix with multiple android targets(x86,arm7,aarch64)
+# without doing anything we get:
+# - x86 android first run:
+# Restore Key:
+#     v0-rust-android-c53327f2d2aa8742f3a7c28f87abfcc73c99c9ba
+# Cache Key:
+#     v0-rust-android-c53327f2d2aa8742f3a7c28f87abfcc73c99c9ba-bf1d6e6287bf9b638129294d35244d6e6ef45d26
+# - aarch64 first run:
+# Restore Key:
+#     v0-rust-android-c53327f2d2aa8742f3a7c28f87abfcc73c99c9ba
+# Cache Key:
+#     v0-rust-android-c53327f2d2aa8742f3a7c28f87abfcc73c99c9ba-bf1d6e6287bf9b638129294d35244d6e6ef45d26
+# Which will obviously not get us a working cache.
+#
+# ## SOLUTION
+# - IDEALLY: all the job should set(export) the proper CC_*** etc for their target
+#   but we CAN NOT do it from inside eg Gradle scripts so for ease of use this is not good.
+# - CURRENT: we add inputs "rust-cache-shared-key" and "rust-cache-key" and pass the
+#   responsability to the caller.
 
 runs:
   using: "composite"
@@ -142,6 +211,9 @@ runs:
         cache-targets: "${{ inputs.working-directory }}/target/"
         # TODO only "if: fromJSON(inputs.install_sccache)"?
         cache-directories: "${{ env.SCCACHE_DIR }}"
+        shared-key: "${{ inputs.rust-cache-shared-key }}"
+        key: "${{ inputs.rust-cache-key }}"
+        env-vars: "${{ inputs.rust-cache-env-var }}"
 
     # MUST be after actions/cache@v3 else the stats are already empty
     - name: Reset sccache stats
