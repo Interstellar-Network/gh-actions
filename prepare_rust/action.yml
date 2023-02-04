@@ -110,8 +110,13 @@ runs:
         chmod +x sccache
         sudo mv sccache /usr/local/bin/sccache
         sccache --version
+        echo "SCCACHE_DIR=${{ env.SCCACHE_DIR }}" >> $GITHUB_ENV
       env:
         SSCACHE_VERSION: 0.3.3
+        # That is the default: but we might as well be explicit
+        # NOTE: we write it to GITHUB_ENV in "run", then use it in "Swatinem/rust-cache" below
+        # WARNING: MUST use the full path for "cache-directories"! [DO NOT use "~/..."] because that is NOT expanded??
+        SCCACHE_DIR: /home/runner/.cache/sccache
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
@@ -136,7 +141,7 @@ runs:
         # "default: "true""
         cache-targets: "${{ inputs.working-directory }}/target/"
         # TODO only "if: fromJSON(inputs.install_sccache)"?
-        cache-directories: ~/.cache/sccache
+        cache-directories: "${{ env.SCCACHE_DIR }}"
 
     # MUST be after actions/cache@v3 else the stats are already empty
     - name: Reset sccache stats
