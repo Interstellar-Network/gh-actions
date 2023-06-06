@@ -45,10 +45,12 @@ runs:
     - name: Finalize Intel SGX install
       run: |
         echo 'deb [signed-by=/etc/apt/keyrings/intel-sgx-keyring.asc arch=amd64] https://download.01.org/intel-sgx/sgx_repo/ubuntu jammy main' | sudo tee /etc/apt/sources.list.d/intel-sgx.list
+        mkdir -p /etc/apt/keyrings
         wget -O - https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.key | sudo tee /etc/apt/keyrings/intel-sgx-keyring.asc > /dev/null
-        sudo apt-get update && sudo apt-get install -y libsgx-dcap-ql
+        sudo apt-get update && sudo apt-get install -y libsgx-dcap-ql libsgx-dcap-default-qpl
         sudo ln -s $(find /usr/lib -type f -name "*sgx_dcap_ql*") /usr/lib/x86_64-linux-gnu/libsgx_dcap_ql.so
         sudo ln -s $(find /usr/lib -type f -name "*sgx_dcap_quoteverify*") /usr/lib/x86_64-linux-gnu/libsgx_dcap_quoteverify.so
+        sudo ln -s $(find /usr/lib -type f -name "*dcap_quoteprov*") /usr/lib/x86_64-linux-gnu/libdcap_quoteprov.so
       shell: bash
 
     # Normally we SHOULD just be able to "source /opt/intel/sgxsdk/environment"
