@@ -2,6 +2,9 @@
 
 Contains the various actions used by all repositories for the CI.
 
+NOTE: for easy grepability, please use a branch name like `ci-v4`; this allows to run eg 
+`rg gh-actions --hidden` at the workspace level to check which versions all repos are using.
+
 ## About caching
 
 - [GH] DOES NOT share caches at the system level(contrary to Gitlab)
