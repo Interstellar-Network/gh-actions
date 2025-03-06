@@ -153,6 +153,13 @@ runs:
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
+      # NOTE We use a bunch of PRIVATE GitHub repositories so we MUST make sure we can authenticate; this is the easiest way: just use SSH
+    - name: Cargo net.git-fetch-with-cli
+      run: |
+        echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+
     ############################################################################
     # cf prepare/action.yml for why not use hendrikmuhs/ccache-action
     # MUST check if sscache already exists b/c prepare_rust CAN be called multiple time on the same host

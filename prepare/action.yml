@@ -7,11 +7,25 @@ description: "Checkout, and optionally install C++ build prerequisites"
 # cf https://github.community/t/unrecognized-named-value-secrets-in-action-yml/207729
 # and https://github.community/t/action-doesnt-understand-the-secrets-syntax-copied-from-the-documentation/16644/3
 #
-# See https://github.com/actions/checkout/issues/287 for the history of how to clone
-# private submodules
 inputs:
-  interstellar_token_ci:
-    description: "PAT TOKEN with access to all the org's repos (including private repos and submodules!)"
+  # AUTHENTICATION: for the `checkout` action, and b/c we are using submodules,
+  # we need a way to pass some kind of token/ssh key with (read-only) access to all our repos;
+  # - PAT TOKEN: works fine for the `checkout` action wrt to the submodules
+  # - SSH KEY: requires a "machine user"(== Service Account): works for both `checkout` AND
+  #   crucially, also works when using private repos with `Cargo`
+  #
+  # There is no point in using both, so for now just go with the SSH KEY.
+  # See https://github.com/actions/checkout/issues/287 for the history of how to clone
+  # private submodules
+  #
+  # WARNING if you change AUTHENTICATION, make sure NOT to break all the CIs!
+  # You can re-run https://github.com/Interstellar-Network/gh-actions-tests/blob/main/.github/workflows/test_prepare.yml to CHECK!
+  #
+  # interstellar_token_ci:
+  #   description: "PAT TOKEN with access to all the org's repos (including private repos and submodules!)"
+  #   required: true
+  ssh_key_input:
+    description: "SSH key of a MACHINE USER with access to all the org's repos"
     required: true
   # NOTE: https://github.com/actions/runner/issues/1483
   # For now all inputs are string, so compare with "true" in "if" statements
@@ -33,15 +47,16 @@ runs:
   steps:
     # https://github.com/actions/checkout
     - uses: actions/checkout@v4
-      # why is this not done automatically??
-      # also for some reason we need to copy to another env var; INPUT_SSH_KEY_INPUT DOES NOT work
-      # env:
-      #   ENV_PAT_TOKEN: ${{ inputs.interstellar_token_ci }}
       with:
         # recursive needed for api_circuits/api_garble b/c they have lib_circuits/lib_garble as deps, and those contains submodules
         submodules: "recursive"
         # PAT TOKEN with access to all the org's repos (including private repos and submodules!)
-        token: ${{ inputs.interstellar_token_ci }}
+        # token: ${{ inputs.interstellar_token_ci }}
+        ssh-key: ${{ inputs.ssh_key_input }}
+
+    - uses: webfactory/ssh-agent@v0.9.0
+      with:
+          ssh-private-key: ${{ inputs.ssh_key_input }}
 
     ############################################################################
     # install a recent compiler
