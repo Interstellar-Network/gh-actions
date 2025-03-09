@@ -312,7 +312,7 @@ runs:
         wget -O- https://github.com/rui314/mold/releases/download/v$MOLD_VERSION/mold-$MOLD_VERSION-$(uname -m)-linux.tar.gz | sudo tar -C /usr/local --strip-components=1 -xzf -
         sudo chmod +x /usr/local/bin/mold
       env:
-        MOLD_VERSION: 1.8.0
+        MOLD_VERSION: 2.37.0
       shell: bash
 
     # DO NOT use eg "if: (!fromJSON(steps.check-mold-exists.outputs.mold-exists))"
