@@ -101,11 +101,25 @@ runs:
         echo "ninja-exists=$(command -v ninja &> /dev/null && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
       shell: bash
 
-    # "Using 'latest' branch, the most recent CMake and ninja are installed."
+    - name: Check CMake version
+      if: fromJSON(inputs.install_cmake_and_ninja)
+      id: check-cmake-version
+      run: |
+        DESIRED_CMAKE_VERSION="3.28.3"
+        echo "desired-version=$DESIRED_CMAKE_VERSION" >> $GITHUB_OUTPUT
+        
+        if command -v cmake &> /dev/null; then
+          current_version=$(cmake --version | head -n1 | cut -d' ' -f3)
+          echo "cmake-version=$current_version" >> $GITHUB_OUTPUT
+        else
+          echo "cmake-version=none" >> $GITHUB_OUTPUT
+        fi
+      shell: bash
+
     # NOTE: make sure it matches the version, if any, in cmake-build-and-test/action.yml
-    - name: install CMake and Ninja
-      uses: lukka/get-cmake@v3.28.3
-      if: fromJSON(inputs.install_cmake_and_ninja) && (!fromJSON(steps.check-cmake-exists.outputs.cmake-exists) || !fromJSON(steps.check-ninja-exists.outputs.ninja-exists))
+    - name: Install CMake and Ninja
+      uses: lukka/get-cmake@v${{ steps.check-cmake-version.outputs.desired-version }}
+      if: fromJSON(inputs.install_cmake_and_ninja) && (steps.check-cmake-version.outputs.cmake-version != steps.check-cmake-version.outputs.desired-version)
 
     ############################################################################
 
