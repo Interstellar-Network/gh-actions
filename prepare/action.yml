@@ -104,7 +104,8 @@ runs:
     # NOTE: make sure it matches the version, if any, in cmake-build-and-test/action.yml
     - name: Install CMake and Ninja
       uses: lukka/get-cmake@v3.28.3
-      if: fromJSON(inputs.install_cmake_and_ninja) && (!fromJSON(steps.check-cmake-exists.outputs.cmake-exists) || !fromJSON(steps.check-ninja-exists.outputs.ninja-exists))
+      if: true
+      # if: fromJSON(inputs.install_cmake_and_ninja) && (!fromJSON(steps.check-cmake-exists.outputs.cmake-exists) || !fromJSON(steps.check-ninja-exists.outputs.ninja-exists))
 
     ############################################################################
 
