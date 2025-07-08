@@ -59,6 +59,12 @@ runs:
           ssh-private-key: ${{ inputs.ssh_key_input }}
 
     ############################################################################
+    # https://github.com/sharkdp/fd?tab=readme-ov-file#on-ubuntu
+    - name: install various utilies
+      run: sudo apt-get install -y fd-find clang-format && sudo ln -s $(which fdfind) /usr/local/bin/fd
+      shell: bash
+
+    ############################################################################
     # install a recent compiler
     # NOTE: it MAY already be done eg when using "container: image: ghcr.io/interstellar-network/ci-images/ci-base-cpp:latest"
     # WARNING if you update eg Clang<->GCC, or its version;
@@ -329,3 +335,4 @@ runs:
         file /usr/bin/ld || echo "file /usr/bin/ld fail!"
         ld --version
       shell: bash
+

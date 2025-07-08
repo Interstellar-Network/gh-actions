@@ -20,6 +20,11 @@ inputs:
 runs:
   using: "composite"
   steps:
+    ###################################
+    - name: clang-format
+      run: fd --type f --extension cpp --extension h --extension hpp --extension cc --extension cxx --extension hh --extension hxx | xargs clang-format --dry-run -Werror
+      shell: bash
+
     # cf https://github.com/marketplace/actions/run-cmake
     # and https://github.com/lukka/CppCMakeVcpkgTemplate/blob/main/.github/workflows/hosted-ninja-vcpkg_submod.yml
     # TODO use Ninja Multi Config(and same when dev locally)
