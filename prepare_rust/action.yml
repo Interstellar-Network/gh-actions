@@ -164,7 +164,7 @@ runs:
       if: fromJSON(inputs.install_sccache)
       run: |
         echo "path=~/.cache/sccache" >> "$GITHUB_OUTPUT"
-        echo "key=sccache-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+        echo "key=sccache-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-${{ hashFiles('**/Cargo.lock') }}" >> "$GITHUB_OUTPUT"
         echo "restore-keys<<EOF" >> "$GITHUB_OUTPUT"
         echo "sccache-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-${{ hashFiles('**/Cargo.lock') }}-" >> "$GITHUB_OUTPUT"
         echo "sccache-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-" >> "$GITHUB_OUTPUT"
@@ -216,7 +216,7 @@ runs:
         echo "~/.cargo/git/db/" >> "$GITHUB_OUTPUT"
         echo "${{ inputs.working-directory }}/target/" >> "$GITHUB_OUTPUT"
         echo "EOF" >> "$GITHUB_OUTPUT"
-        echo "key=cargo-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+        echo "key=cargo-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-${{ hashFiles('**/Cargo.lock') }}" >> "$GITHUB_OUTPUT"
         echo "restore-keys<<EOF" >> "$GITHUB_OUTPUT"
         echo "cargo-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-${{ hashFiles('**/Cargo.lock') }}-" >> "$GITHUB_OUTPUT"
         echo "cargo-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-" >> "$GITHUB_OUTPUT"

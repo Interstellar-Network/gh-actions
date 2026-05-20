@@ -209,7 +209,7 @@ runs:
       if: fromJSON(inputs.install_ccache)
       run: |
         echo "path=~/.cache/ccache" >> "$GITHUB_OUTPUT"
-        echo "key=cache-${{ runner.os }}-${{ steps.set-cpp-compilerid.outputs.cpp-compilerid }}-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+        echo "key=cache-${{ runner.os }}-${{ steps.set-cpp-compilerid.outputs.cpp-compilerid }}" >> "$GITHUB_OUTPUT"
         echo "restore-keys=cache-${{ runner.os }}-${{ steps.set-cpp-compilerid.outputs.cpp-compilerid }}-" >> "$GITHUB_OUTPUT"
       shell: bash
 
