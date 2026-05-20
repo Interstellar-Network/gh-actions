@@ -5,7 +5,7 @@ description: "Save a cache path with always() pattern — dual-provider switchin
 # WarpBuilds/cache/save@v1 (Warp Build runners).
 # The provider is autonomously resolved (in order of precedence):
 #   1. env.CACHE_PROVIDER  — exported by prepare/prepare_rust action
-#   2. inputs.cache-provider — explicit override or ${{ vars.CACHE_PROVIDER || 'github' }}
+#   2. inputs.cache-provider — explicit override (default: 'github')
 #   3. 'github' — ultimate fallback
 #
 # Callers add this *after* the build/test step with if: always() so the cache
@@ -36,9 +36,9 @@ inputs:
     required: false
     default: "false"
   cache-provider:
-    description: "Cache provider: 'github' (uses actions/cache) or 'warp' (uses WarpBuilds/cache). Auto-resolved from env.CACHE_PROVIDER if set, otherwise from vars.CACHE_PROVIDER or default 'github'."
+    description: "Cache provider: 'github' (uses actions/cache) or 'warp' (uses WarpBuilds/cache). Auto-resolved from env.CACHE_PROVIDER if set, otherwise defaults to 'github'."
     required: false
-    default: "${{ vars.CACHE_PROVIDER || 'github' }}"
+    default: "github"
 
 runs:
   using: "composite"

@@ -38,9 +38,9 @@ inputs:
     required: false
     default: "true"
   cache-provider:
-    description: "Cache provider: 'github' (default, uses actions/cache) or 'warp' (uses WarpBuilds/cache). The switch is handled internally; callers only need to set this. Auto-resolved from vars.CACHE_PROVIDER."
+    description: "Cache provider: 'github' (default, uses actions/cache) or 'warp' (uses WarpBuilds/cache). The switch is handled internally; callers only need to set this. At runtime, env.CACHE_PROVIDER takes precedence over this input."
     required: false
-    default: "${{ vars.CACHE_PROVIDER || 'github' }}"
+    default: "github"
 
 outputs:
   cache-ccache-key:
