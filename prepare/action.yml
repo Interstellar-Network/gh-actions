@@ -38,7 +38,7 @@ inputs:
     required: false
     default: "true"
   cache-provider:
-    description: "Cache provider: 'github' (default, uses actions/cache) or 'warp' (uses WarpBuilds/cache). The switch is handled internally; callers only need to set this. At runtime, env.CACHE_PROVIDER takes precedence over this input."
+    description: "Cache provider: 'github' (default, uses actions/cache) or 'warp' (uses WarpBuilds/cache). The switch is handled internally by this action; callers only need to set this. Exported as CACHE_BACKEND to GITHUB_ENV so downstream actions (prepare_rust, save-cache) auto-detect. NOTE: this is the action input; the org-level variable is vars.CACHE_PROVIDER."
     required: false
     default: "github"
 
@@ -231,11 +231,13 @@ runs:
         key: ${{ steps.ccache-config.outputs.key }}
         restore-keys: ${{ steps.ccache-config.outputs.restore-keys }}
 
-    # Export cache provider choice so downstream save steps can select the right backend.
+    # Export cache backend choice so downstream save steps can select the right backend.
     # This is unconditional — needed even when install_ccache is false.
-    - name: Export cache provider
+    # NOTE: the env var is named CACHE_BACKEND (not CACHE_PROVIDER) to avoid
+    # confusion with the org-level vars.CACHE_PROVIDER set via the GitHub web UI.
+    - name: Export cache backend
       run: |
-        echo "CACHE_PROVIDER=${{ inputs.cache-provider }}" >> "$GITHUB_ENV"
+        echo "CACHE_BACKEND=${{ inputs.cache-provider }}" >> "$GITHUB_ENV"
       shell: bash
 
     # Export cache info so downstream actions can reference it without needing step outputs
@@ -246,7 +248,6 @@ runs:
       run: |
         echo "CACHE_CCACHE_KEY=${{ steps.cache-ccache-restore-github.outputs.cache-primary-key || steps.cache-ccache-restore-warp.outputs.cache-primary-key }}" >> "$GITHUB_ENV"
         echo "CACHE_CCACHE_HIT=${{ steps.cache-ccache-restore-github.outputs.cache-hit || steps.cache-ccache-restore-warp.outputs.cache-hit }}" >> "$GITHUB_ENV"
-        echo "CACHE_PROVIDER=${{ inputs.cache-provider }}" >> "$GITHUB_ENV"
       shell: bash
 
     # MUST be after cache restore else the stats are polluted by restore

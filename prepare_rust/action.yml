@@ -38,7 +38,7 @@ inputs:
     required: false
     default: "true"
   cache-provider:
-    description: "Cache provider: 'github' (default, uses actions/cache) or 'warp' (uses WarpBuilds/cache). The switch is handled internally; callers only need to set this. At runtime, env.CACHE_PROVIDER takes precedence over this input."
+    description: "Cache provider: 'github' (default, uses actions/cache) or 'warp' (uses WarpBuilds/cache). Fallback input: if prepare ran first it exported CACHE_BACKEND to env, which takes precedence. The org-level variable is vars.CACHE_PROVIDER — set it in the GitHub web UI, pass it to the prepare step as cache-provider, and everything downstream auto-detects."
     required: false
     default: "github"
 
@@ -177,8 +177,21 @@ runs:
       working-directory: ${{ inputs.working-directory }}
 
     ############################################################################
+    # Resolve cache backend from env (set by prepare) or input (standalone fallback).
+    # CACHE_BACKEND is the runtime env var (to avoid confusion with org-level
+    # vars.CACHE_PROVIDER). If prepare ran first it exported CACHE_BACKEND;
+    # otherwise fall back to this action's own cache-provider input.
+    - name: Resolve cache backend
+      id: resolve-backend
+      run: |
+        PROVIDER="${CACHE_BACKEND:-${{ inputs.cache-provider }}}"
+        echo "provider=$PROVIDER" >> "$GITHUB_OUTPUT"
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+
+    ############################################################################
     # Sccache restore: dual-provider (GitHub or WarpBuilds).
-    # Only one runs based on inputs.cache-provider.
+    # Provider selection uses the resolved backend (env takes precedence over input).
     # The corresponding save is done separately with if: always()
     # so that sccache is saved even on build/test failure.
 
@@ -199,7 +212,7 @@ runs:
 
     - name: sccache restore (GitHub)
       id: restore-sccache-github
-      if: fromJSON(inputs.install_sccache) && inputs.cache-provider != 'warp'
+      if: fromJSON(inputs.install_sccache) && steps.resolve-backend.outputs.provider != 'warp'
       uses: actions/cache/restore@v5
       with:
         path: ${{ steps.sccache-config.outputs.path }}
@@ -208,7 +221,7 @@ runs:
 
     - name: sccache restore (WarpBuilds)
       id: restore-sccache-warp
-      if: fromJSON(inputs.install_sccache) && inputs.cache-provider == 'warp'
+      if: fromJSON(inputs.install_sccache) && steps.resolve-backend.outputs.provider == 'warp'
       uses: WarpBuilds/cache/restore@v1
       with:
         path: ${{ steps.sccache-config.outputs.path }}
@@ -216,13 +229,13 @@ runs:
         restore-keys: ${{ steps.sccache-config.outputs.restore-keys }}
 
     # Export sccache cache info so downstream actions can reference it
-    # (e.g. in rust-build-and-test, rust-lint, or save-cache)
+    # (e.g. in rust-build-and-test, rust-lint, or save-cache).
+    # NOTE: do NOT export CACHE_BACKEND here — it is exported by prepare.
     - name: Export sccache cache info
       if: fromJSON(inputs.install_sccache)
       run: |
         echo "SCCACHE_KEY=${{ steps.restore-sccache-github.outputs.cache-primary-key || steps.restore-sccache-warp.outputs.cache-primary-key }}" >> "$GITHUB_ENV"
         echo "SCCACHE_HIT=${{ steps.restore-sccache-github.outputs.cache-hit || steps.restore-sccache-warp.outputs.cache-hit }}" >> "$GITHUB_ENV"
-        echo "CACHE_PROVIDER=${{ inputs.cache-provider }}" >> "$GITHUB_ENV"
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
@@ -252,7 +265,7 @@ runs:
 
     - name: cargo + target restore (GitHub)
       id: restore-cargo-github
-      if: inputs.cache-provider != 'warp'
+      if: steps.resolve-backend.outputs.provider != 'warp'
       uses: actions/cache/restore@v5
       with:
         path: ${{ steps.cargo-config.outputs.path }}
@@ -260,7 +273,7 @@ runs:
         restore-keys: ${{ steps.cargo-config.outputs.restore-keys }}
 
     - name: cargo + target restore (WarpBuilds)
-      if: inputs.cache-provider == 'warp'
+      if: steps.resolve-backend.outputs.provider == 'warp'
       id: restore-cargo-warp
       uses: WarpBuilds/cache/restore@v1
       with:

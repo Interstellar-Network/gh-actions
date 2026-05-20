@@ -36,7 +36,7 @@ inputs:
     required: false
     default: "false"
   cache-provider:
-    description: "Cache provider: 'github' (uses actions/cache) or 'warp' (uses WarpBuilds/cache). Auto-resolved from env.CACHE_PROVIDER if set, otherwise defaults to 'github'."
+    description: "Cache provider: 'github' (uses actions/cache) or 'warp' (uses WarpBuilds/cache). Auto-resolved: env.CACHE_BACKEND (set by prepare) takes precedence; falls back to this input. The org-level variable is vars.CACHE_PROVIDER — callers only need to pass it to the prepare step."
     required: false
     default: "github"
 
@@ -47,7 +47,7 @@ runs:
     - name: Resolve cache provider
       id: resolve-provider
       run: |
-        PROVIDER="${CACHE_PROVIDER:-${{ inputs.cache-provider }}}"
+        PROVIDER="${CACHE_BACKEND:-${{ inputs.cache-provider }}}"
         echo "provider=$PROVIDER" >> "$GITHUB_OUTPUT"
       shell: bash
 
