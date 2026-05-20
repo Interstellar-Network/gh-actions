@@ -63,12 +63,7 @@ runs:
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
-    # TODO move into separate action? ideally into a JS action "post" that setup ccache?
-    - name: Print ccache stats
-      run: |
-        ccache --show-stats || true
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
+    # Cache save: see ../save-cache/action.yml
 
     ############################################################################
     - name: Check if conan installed

@@ -29,15 +29,7 @@ runs:
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
-    # TODO move into separate action? ideally into a JS action "post" that setup ccache?
-    - name: Print ccache/sccache stats
-      # display stats even if tests failed
-      if: always()
-      run: |
-        ccache --show-stats || echo "ccache not found!"
-        sccache --show-stats || echo "ccache sccache found!"
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
+    # Cache save: see ../save-cache/action.yml
 
     # TODO cargo install
     # do we call "cargo build --profile={{ matrix.build }}" manually or not needed?

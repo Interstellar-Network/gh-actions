@@ -1,0 +1,76 @@
+name: "save-cache"
+description: "Save a cache path with always() pattern — dual-provider switching is handled internally"
+
+# Saves the given cache path using actions/cache/save@v5 (GitHub runners) or
+# WarpBuilds/cache/save@v1 (Warp Build runners).
+# The provider is autonomously resolved (in order of precedence):
+#   1. env.CACHE_PROVIDER  — exported by prepare/prepare_rust action
+#   2. inputs.cache-provider — explicit override or ${{ vars.CACHE_PROVIDER || 'github' }}
+#   3. 'github' — ultimate fallback
+#
+# Callers add this *after* the build/test step with if: always() so the cache
+# is persisted even on failure.  Provider switching is invisible:
+#
+#   steps:
+#     - uses: Interstellar-Network/gh-actions/prepare@...
+#     - uses: Interstellar-Network/gh-actions/prepare_rust@...
+#
+#     # ... build / test / lint steps ...
+#
+#     - uses: Interstellar-Network/gh-actions/save-cache@...
+#       if: always()
+#       with:
+#         key: ${{ env.CACHE_CCACHE_KEY }}   # or env.SCCACHE_KEY
+#         cache-hit: ${{ env.CACHE_CCACHE_HIT }}
+#         path: ~/.cache/ccache               # or ~/.cache/sccache
+
+inputs:
+  key:
+    description: "The cache key (from prepare/prepare_rust action output or env var)."
+    required: true
+  path:
+    description: "Path(s) to cache. Multi-line for multiple paths."
+    required: true
+  cache-hit:
+    description: "When 'true', skips saving (avoids uploading an identical cache). Default: 'false'."
+    required: false
+    default: "false"
+  cache-provider:
+    description: "Cache provider: 'github' (uses actions/cache) or 'warp' (uses WarpBuilds/cache). Auto-resolved from env.CACHE_PROVIDER if set, otherwise from vars.CACHE_PROVIDER or default 'github'."
+    required: false
+    default: "${{ vars.CACHE_PROVIDER || 'github' }}"
+
+runs:
+  using: "composite"
+  steps:
+    # Resolve the effective cache provider so callers never need to think about it.
+    # Precedence: env (runtime) > inputs (from vars) > 'github'
+    - name: Resolve cache provider
+      id: resolve-provider
+      run: |
+        PROVIDER="${CACHE_PROVIDER:-${{ inputs.cache-provider }}}"
+        echo "provider=$PROVIDER" >> "$GITHUB_OUTPUT"
+      shell: bash
+
+    - name: Save (GitHub Cache)
+      uses: actions/cache/save@v5
+      if: always() && inputs.cache-hit != 'true' && steps.resolve-provider.outputs.provider != 'warp'
+      with:
+        key: ${{ inputs.key }}
+        path: ${{ inputs.path }}
+
+    - name: Save (WarpBuilds Cache)
+      uses: WarpBuilds/cache/save@v1
+      if: always() && inputs.cache-hit != 'true' && steps.resolve-provider.outputs.provider == 'warp'
+      with:
+        key: ${{ inputs.key }}
+        path: ${{ inputs.path }}
+
+    # Print cache statistics (always, even if save was skipped due to cache-hit).
+    # Each tool gracefully reports "not found" if not installed.
+    - name: Print cache stats
+      if: always()
+      run: |
+        ccache --show-stats 2>/dev/null || echo "ccache not found!"
+        sccache --show-stats 2>/dev/null || echo "sccache not found!"
+      shell: bash

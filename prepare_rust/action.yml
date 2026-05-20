@@ -33,77 +33,18 @@ inputs:
     description: "Install sccache"
     required: false
     default: "true"
-  # passed to https://github.com/Swatinem/rust-cache#example-usage
-  # NOTE cf https://github.com/Swatinem/rust-cache/blob/master/src/config.ts#L49
-  # It's an either/or situation: "This uses either the `shared-key` input, or the `key` input combined with the `job` key."
-  # So for our use cache setting eg "rust-cache-key": REPLACEME_ANDROID_TARGET(from matrix strategy) SHOULD be enough.
-  #
-  # "A cache key that is used instead of the automatic `job`-based key,
-  # and is stable over multiple jobs."
-  # default: empty
-  rust-cache-shared-key:
-    description: "Swatinem/rust-cache shared-key"
+  cache-provider:
+    description: "Cache provider: 'github' (default, uses actions/cache) or 'warp' (uses WarpBuilds/cache). The switch is handled internally; callers only need to set this. Auto-resolved from vars.CACHE_PROVIDER."
     required: false
-    default: ""
-  # "An additional cache key that is added alongside the automatic `job`-based
-  # cache key and can be used to further differentiate jobs."
-  # default: empty
-  rust-cache-key:
-    description: "Swatinem/rust-cache key"
-    required: false
-    default: ""
-  # "A whitespace separated list of env-var *prefixes* who's value contributes
-  # to the environment cache key.
-  # The env-vars are matched by *prefix*, so the default `RUST` var will
-  # match all of `RUSTC`, `RUSTUP_*`, `RUSTFLAGS`, `RUSTDOC_*`, etc."
-  # default: "CARGO CC CFLAGS CXX CMAKE RUST"
-  rust-cache-env-var:
-    description: "Swatinem/rust-cache env-var"
-    required: false
-    default: ""
+    default: "${{ vars.CACHE_PROVIDER || 'github' }}"
 
-################################################################################
-# ABOUT CACHE(sccache)
-# Swatinem cache DOES NOT update the cache(never!)
-# And its logic make it depends on basically just Cargo.toml and Cargo.lock
-#
-# ## ONE
-# This is fine, but it means that when dev pipelines we may end up uploading
-# a cache which is useless, and if that is the cache it MUST be cleared manually.
-# eg scenario:
-# - first run in a branch: a bad "working-directory" is given by the caller
-# - the cache will be keyed by Cargo.lock/.toml, and uploaded at the end of the job
-#   but it will be empty
-# - the caller changes to the correct CWD
-# - in Post Run Post job cleanup. for "Cache Configuration" it will say: "Cache up-to-date."
-# -> the cache will only be useless for this branch until expiration or manual cleanup
-#
-# ## TWO
-# The same issue also happens when compiling for multiple targets!
-# Swatinem default env vars: "default: "CARGO CC CFLAGS CXX CMAKE RUST""
-# But that means the FIRST --target built will be the cache; and all the other ones
-# will NOT use a valid Sccache's cache...
-# eg if we have a matrix with multiple android targets(x86,arm7,aarch64)
-# without doing anything we get:
-# - x86 android first run:
-# Restore Key:
-#     v0-rust-android-c53327f2d2aa8742f3a7c28f87abfcc73c99c9ba
-# Cache Key:
-#     v0-rust-android-c53327f2d2aa8742f3a7c28f87abfcc73c99c9ba-bf1d6e6287bf9b638129294d35244d6e6ef45d26
-# - aarch64 first run:
-# Restore Key:
-#     v0-rust-android-c53327f2d2aa8742f3a7c28f87abfcc73c99c9ba
-# Cache Key:
-#     v0-rust-android-c53327f2d2aa8742f3a7c28f87abfcc73c99c9ba-bf1d6e6287bf9b638129294d35244d6e6ef45d26
-# Which will obviously not get us a working cache.
-#
-# ## SOLUTION
-# - IDEALLY: all the job should set(export) the proper CC_*** etc for their target
-#   but we CAN NOT do it from inside eg Gradle scripts so for ease of use this is not good.
-# - CURRENT: we add inputs "rust-cache-shared-key" and "rust-cache-key" and pass the
-#   responsability to the caller.
-
-runs:
+outputs:
+  cache-sccache-key:
+    description: "The primary cache key used for sccache restore (empty if install_sccache is false)"
+    value: "${{ steps.restore-sccache-github.outputs.cache-primary-key || steps.restore-sccache-warp.outputs.cache-primary-key }}"
+  cache-sccache-hit:
+    description: "Whether sccache was restored with an exact key match ('true' or 'false', empty if install_sccache is false)"
+    value: "${{ steps.restore-sccache-github.outputs.cache-hit || steps.restore-sccache-warp.outputs.cache-hit }}"
   using: "composite"
   steps:
     ############################################################################
@@ -162,12 +103,13 @@ runs:
 
     ############################################################################
     # cf prepare/action.yml for why not use hendrikmuhs/ccache-action
+    # cf prepare/action.yml for why not use hendrikmuhs/ccache-action
     # MUST check if sscache already exists b/c prepare_rust CAN be called multiple time on the same host
-    # error: "mkdir: cannot create directory ‘/tmp/sscache’: File exists"
+    # error: "mkdir: cannot create directory '/tmp/sscache': File exists"
     #
-    # NOTE: about cache: previously we used cache action(or rather pat-s/always-upload-cache@v3)
-    # to handle ~/.cache/sccache but now that "Swatinem/rust-cache@v2" has the option
-    # to take care of additional directories, we delegate.
+    # NOTE: about sccache caching: we use explicit actions/cache/restore + actions/cache/save
+    # (or WarpBuilds variants) instead of the old pat-s/always-upload-cache or Swatinem/rust-cache
+    # cache-directories, so that we control the save timing and provider selection.
 
     - name: Check if sccache already in PATH
       if: fromJSON(inputs.install_sccache)
@@ -186,13 +128,11 @@ runs:
         chmod +x sccache
         sudo mv sccache /usr/local/bin/sccache
         sccache --version
-        echo "SCCACHE_DIR=${{ env.SCCACHE_DIR }}" >> $GITHUB_ENV
+        echo "SCCACHE_DIR=$HOME/.cache/sccache" >> $GITHUB_ENV
       env:
         SSCACHE_VERSION: 0.3.3
         # That is the default: but we might as well be explicit
-        # NOTE: we write it to GITHUB_ENV in "run", then use it in "Swatinem/rust-cache" below
-        # WARNING: MUST use the full path for "cache-directories"! [DO NOT use "~/..."] because that is NOT expanded??
-        SCCACHE_DIR: /home/runner/.cache/sccache
+        SCCACHE_DIR: $HOME/.cache/sccache
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
@@ -205,31 +145,110 @@ runs:
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
-    # IMPORTANT: DO NOT call this multiple time on the same host! cf "name: sccache"
-    # TODO this or stock actions/cache?
-    # see https://github.com/Swatinem/rust-cache/blob/cb2cf0cc7c5198d3364b9630e2c3d457f160790c/src/common.ts#L108 for key
-    #
-    - uses: Swatinem/rust-cache@v2
-      with:
-        cache-on-failure: true
-        # "Determines whether workspace `target` directories are cached."
-        # "If `false`, only the cargo registry will be cached."
-        # "default: "true""
-        cache-targets: "${{ inputs.working-directory }}/target/"
-        # TODO only "if: fromJSON(inputs.install_sccache)"?
-        cache-directories: "${{ env.SCCACHE_DIR }}"
-        shared-key: "${{ inputs.rust-cache-shared-key }}"
-        key: "${{ inputs.rust-cache-key }}"
-        env-vars: "${{ inputs.rust-cache-env-var }}"
+    ############################################################################
+    # Sccache restore: dual-provider (GitHub or WarpBuilds).
+    # Only one runs based on inputs.cache-provider.
+    # The corresponding save is done separately with if: always()
+    # so that sccache is saved even on build/test failure.
 
-    # MUST be after actions/cache@v3 else the stats are already empty
+    - name: Set sccache cache config
+      id: sccache-config
+      if: fromJSON(inputs.install_sccache)
+      run: |
+        echo "path=~/.cache/sccache" >> "$GITHUB_OUTPUT"
+        echo "key=sccache-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+        echo "restore-keys<<EOF" >> "$GITHUB_OUTPUT"
+        echo "sccache-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-${{ hashFiles('**/Cargo.lock') }}-" >> "$GITHUB_OUTPUT"
+        echo "sccache-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-" >> "$GITHUB_OUTPUT"
+        echo "sccache-${{ runner.os }}-" >> "$GITHUB_OUTPUT"
+        echo "EOF" >> "$GITHUB_OUTPUT"
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+
+    - name: sccache restore (GitHub)
+      id: restore-sccache-github
+      if: fromJSON(inputs.install_sccache) && inputs.cache-provider != 'warp'
+      uses: actions/cache/restore@v5
+      with:
+        path: ${{ steps.sccache-config.outputs.path }}
+        key: ${{ steps.sccache-config.outputs.key }}
+        restore-keys: ${{ steps.sccache-config.outputs.restore-keys }}
+
+    - name: sccache restore (WarpBuilds)
+      id: restore-sccache-warp
+      if: fromJSON(inputs.install_sccache) && inputs.cache-provider == 'warp'
+      uses: WarpBuilds/cache/restore@v1
+      with:
+        path: ${{ steps.sccache-config.outputs.path }}
+        key: ${{ steps.sccache-config.outputs.key }}
+        restore-keys: ${{ steps.sccache-config.outputs.restore-keys }}
+
+    # Export sccache cache info so downstream actions can reference it
+    # (e.g. in rust-build-and-test, rust-lint, or save-cache)
+    - name: Export sccache cache info
+      if: fromJSON(inputs.install_sccache)
+      run: |
+        echo "SCCACHE_KEY=${{ steps.restore-sccache-github.outputs.cache-primary-key || steps.restore-sccache-warp.outputs.cache-primary-key }}" >> "$GITHUB_ENV"
+        echo "SCCACHE_HIT=${{ steps.restore-sccache-github.outputs.cache-hit || steps.restore-sccache-warp.outputs.cache-hit }}" >> "$GITHUB_ENV"
+        echo "CACHE_PROVIDER=${{ inputs.cache-provider }}" >> "$GITHUB_ENV"
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+
+    ############################################################################
+    # Cargo registry + git db + target directory restore: dual-provider.
+    # Same pattern as sccache and ccache: config defined once, both
+    # provider steps reference it. The corresponding save is done
+    # separately with if: always() so the cache is saved even on failure.
+
+    - name: Set cargo cache config
+      id: cargo-config
+      run: |
+        echo "path<<EOF" >> "$GITHUB_OUTPUT"
+        echo "~/.cargo/registry/" >> "$GITHUB_OUTPUT"
+        echo "~/.cargo/git/db/" >> "$GITHUB_OUTPUT"
+        echo "${{ inputs.working-directory }}/target/" >> "$GITHUB_OUTPUT"
+        echo "EOF" >> "$GITHUB_OUTPUT"
+        echo "key=cargo-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+        echo "restore-keys<<EOF" >> "$GITHUB_OUTPUT"
+        echo "cargo-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-${{ hashFiles('**/Cargo.lock') }}-" >> "$GITHUB_OUTPUT"
+        echo "cargo-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-" >> "$GITHUB_OUTPUT"
+        echo "cargo-${{ runner.os }}-" >> "$GITHUB_OUTPUT"
+        echo "EOF" >> "$GITHUB_OUTPUT"
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+
+    - name: cargo + target restore (GitHub)
+      id: restore-cargo-github
+      if: inputs.cache-provider != 'warp'
+      uses: actions/cache/restore@v5
+      with:
+        path: ${{ steps.cargo-config.outputs.path }}
+        key: ${{ steps.cargo-config.outputs.key }}
+        restore-keys: ${{ steps.cargo-config.outputs.restore-keys }}
+
+    - name: cargo + target restore (WarpBuilds)
+      if: inputs.cache-provider == 'warp'
+      id: restore-cargo-warp
+      uses: WarpBuilds/cache/restore@v1
+      with:
+        path: ${{ steps.cargo-config.outputs.path }}
+        key: ${{ steps.cargo-config.outputs.key }}
+        restore-keys: ${{ steps.cargo-config.outputs.restore-keys }}
+
+    # Export cargo/target cache info for downstream save steps.
+    - name: Export cargo cache info
+      run: |
+        echo "CARGO_CACHE_KEY=${{ steps.restore-cargo-github.outputs.cache-primary-key || steps.restore-cargo-warp.outputs.cache-primary-key }}" >> "$GITHUB_ENV"
+        echo "CARGO_CACHE_HIT=${{ steps.restore-cargo-github.outputs.cache-hit || steps.restore-cargo-warp.outputs.cache-hit }}" >> "$GITHUB_ENV"
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+    # MUST be after cache restore else the stats are already empty
     - name: Reset sccache stats
       if: fromJSON(inputs.install_sccache)
       run: |
         sccache --zero-stats
       shell: bash
       working-directory: ${{ inputs.working-directory }}
-
     ############################################################################
     # NOTE: https://github.com/actions-rs/cargo is not maintained anymore
     # https://github.com/actions-rs/cargo/issues/222

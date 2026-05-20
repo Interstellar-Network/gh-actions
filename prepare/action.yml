@@ -37,6 +37,18 @@ inputs:
     description: "Install ccache"
     required: false
     default: "true"
+  cache-provider:
+    description: "Cache provider: 'github' (default, uses actions/cache) or 'warp' (uses WarpBuilds/cache). The switch is handled internally; callers only need to set this. Auto-resolved from vars.CACHE_PROVIDER."
+    required: false
+    default: "${{ vars.CACHE_PROVIDER || 'github' }}"
+
+outputs:
+  cache-ccache-key:
+    description: "The primary cache key used for ccache restore (empty if install_ccache is false)"
+    value: "${{ steps.cache-ccache-restore-github.outputs.cache-primary-key || steps.cache-ccache-restore-warp.outputs.cache-primary-key }}"
+  cache-ccache-hit:
+    description: "Whether ccache was restored with an exact key match ('true' or 'false', empty if install_ccache is false)"
+    value: "${{ steps.cache-ccache-restore-github.outputs.cache-hit || steps.cache-ccache-restore-warp.outputs.cache-hit }}"
 
 runs:
   using: "composite"
@@ -187,34 +199,57 @@ runs:
         echo "cpp-compilerid=$(realpath /usr/bin/cc)-$(cc -dumpversion)" >> $GITHUB_OUTPUT
       shell: bash
 
-    # IMPORTANT: DO NOT call this multiple time on the same host! cf "name: sccache"
-    - name: ccache
-      id: cache-ccache
-      if: fromJSON(inputs.install_ccache)
-      # using a fork that uploads even in case of failure
-      # really useful for *_circuits b/c if a test fail after 20+mins of compilation it is wasteful to discard the compilation
-      # uses: actions/cache@v3
-      uses: pat-s/always-upload-cache@v3
-      with:
-        # cache_dir = /home/runner/.cache/ccache
-        path: ~/.cache/ccache
-        # IMPORTANT: by default on a cache hit we get at restore time:
-        # "Cache restored successfully"
-        # "Cache restored from key: cache-Linux-/usr/bin/x86_64-linux-gnu-gcc-9-9"
-        # and in post job:
-        # "Cache hit occurred on the primary key cache-Linux-/usr/bin/x86_64-linux-gnu-gcc-9-9, not saving cache."
-        # b/c of isExactKeyMatch at https://github.com/actions/cache/blob/main/src/save.ts#L36
-        # Which means the cache is NOT updated; which is NOT AT ALL what we want.
-        # cf https://github.com/actions/cache/issues/171
-        # and https://github.com/actions/cache/issues/109
-        # So we SHOULD for last part of the key use something that changes at every job.
-        #
-        # NOTE: DO NOT use ${{ github.sha }}?
-        # Unable to reserve cache with key cache-Linux-/usr/bin/x86_64-linux-gnu-gcc-9-9-4b28f96a1993312ede7d10fe6ad0d4bc3251e0ad, another job may be creating this cache. More details: Cache already exists. Scope: refs/heads/add-ci, Key: cache-Linux-/usr/bin/x86_64-linux-gnu-gcc-9-9-4b28f96a1993312ede7d10fe6ad0d4bc3251e0ad, Version: b97fbe098767aae2aa5efb5d4f8da4e488678a6aaf72931965bfb19f3ef9e00a
-        key: cache-${{ runner.os }}-${{ steps.set-cpp-compilerid.outputs.cpp-compilerid }}-${{ github.sha }}
-        restore-keys: cache-${{ runner.os }}-${{ steps.set-cpp-compilerid.outputs.cpp-compilerid }}-
+    # Restore ccache: dual-provider (GitHub or WarpBuilds).
+    # Only one runs based on inputs.cache-provider.
+    # The corresponding save is done separately with if: always()
+    # so that the cache is saved even on build/test failure.
 
-    # MUST be after actions/cache@v3 else the stats are already empty
+    - name: Set ccache cache config
+      id: ccache-config
+      if: fromJSON(inputs.install_ccache)
+      run: |
+        echo "path=~/.cache/ccache" >> "$GITHUB_OUTPUT"
+        echo "key=cache-${{ runner.os }}-${{ steps.set-cpp-compilerid.outputs.cpp-compilerid }}-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+        echo "restore-keys=cache-${{ runner.os }}-${{ steps.set-cpp-compilerid.outputs.cpp-compilerid }}-" >> "$GITHUB_OUTPUT"
+      shell: bash
+
+    - name: ccache restore (GitHub)
+      id: cache-ccache-restore-github
+      if: fromJSON(inputs.install_ccache) && inputs.cache-provider != 'warp'
+      uses: actions/cache/restore@v5
+      with:
+        path: ${{ steps.ccache-config.outputs.path }}
+        key: ${{ steps.ccache-config.outputs.key }}
+        restore-keys: ${{ steps.ccache-config.outputs.restore-keys }}
+
+    - name: ccache restore (WarpBuilds)
+      id: cache-ccache-restore-warp
+      if: fromJSON(inputs.install_ccache) && inputs.cache-provider == 'warp'
+      uses: WarpBuilds/cache/restore@v1
+      with:
+        path: ${{ steps.ccache-config.outputs.path }}
+        key: ${{ steps.ccache-config.outputs.key }}
+        restore-keys: ${{ steps.ccache-config.outputs.restore-keys }}
+
+    # Export cache provider choice so downstream save steps can select the right backend.
+    # This is unconditional — needed even when install_ccache is false.
+    - name: Export cache provider
+      run: |
+        echo "CACHE_PROVIDER=${{ inputs.cache-provider }}" >> "$GITHUB_ENV"
+      shell: bash
+
+    # Export cache info so downstream actions can reference it without needing step outputs
+    # (useful across composite action boundaries, e.g. in cmake-build-and-test).
+    # Use GitHub output if available (it ran), else WarpBuilds output.
+    - name: Export ccache cache info
+      if: fromJSON(inputs.install_ccache)
+      run: |
+        echo "CACHE_CCACHE_KEY=${{ steps.cache-ccache-restore-github.outputs.cache-primary-key || steps.cache-ccache-restore-warp.outputs.cache-primary-key }}" >> "$GITHUB_ENV"
+        echo "CACHE_CCACHE_HIT=${{ steps.cache-ccache-restore-github.outputs.cache-hit || steps.cache-ccache-restore-warp.outputs.cache-hit }}" >> "$GITHUB_ENV"
+        echo "CACHE_PROVIDER=${{ inputs.cache-provider }}" >> "$GITHUB_ENV"
+      shell: bash
+
+    # MUST be after cache restore else the stats are polluted by restore
     - name: Reset ccache stats
       if: fromJSON(inputs.install_ccache)
       run: |
