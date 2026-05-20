@@ -75,16 +75,20 @@ runs:
         path: ${{ inputs.path }}
 
     # ── Auto-detect mode (when key is empty): save ccache ──
+    # NOTE: no cache-hit check. The local sccache/ccache dir is modified by the build,
+    # so we ALWAYS try to save. If the key already exists (exact hit), GitHub Actions
+    # cache rejects the save with a non-fatal warning — that's OK, the existing entry
+    # remains.
     - name: Save ccache (GitHub)
       uses: actions/cache/save@v5
-      if: always() && inputs.key == '' && env.CACHE_CCACHE_KEY != '' && env.CACHE_CCACHE_HIT != 'true' && steps.resolve-provider.outputs.provider != 'warp'
+      if: always() && inputs.key == '' && env.CACHE_CCACHE_KEY != '' && steps.resolve-provider.outputs.provider != 'warp'
       with:
         key: ${{ env.CACHE_CCACHE_KEY }}
         path: ~/.cache/ccache
 
     - name: Save ccache (Warp)
       uses: WarpBuilds/cache/save@v1
-      if: always() && inputs.key == '' && env.CACHE_CCACHE_KEY != '' && env.CACHE_CCACHE_HIT != 'true' && steps.resolve-provider.outputs.provider == 'warp'
+      if: always() && inputs.key == '' && env.CACHE_CCACHE_KEY != '' && steps.resolve-provider.outputs.provider == 'warp'
       with:
         key: ${{ env.CACHE_CCACHE_KEY }}
         path: ~/.cache/ccache
@@ -92,14 +96,14 @@ runs:
     # ── Auto-detect: save sccache ──
     - name: Save sccache (GitHub)
       uses: actions/cache/save@v5
-      if: always() && inputs.key == '' && env.SCCACHE_KEY != '' && env.SCCACHE_HIT != 'true' && steps.resolve-provider.outputs.provider != 'warp'
+      if: always() && inputs.key == '' && env.SCCACHE_KEY != '' && steps.resolve-provider.outputs.provider != 'warp'
       with:
         key: ${{ env.SCCACHE_KEY }}
         path: ~/.cache/sccache
 
     - name: Save sccache (Warp)
       uses: WarpBuilds/cache/save@v1
-      if: always() && inputs.key == '' && env.SCCACHE_KEY != '' && env.SCCACHE_HIT != 'true' && steps.resolve-provider.outputs.provider == 'warp'
+      if: always() && inputs.key == '' && env.SCCACHE_KEY != '' && steps.resolve-provider.outputs.provider == 'warp'
       with:
         key: ${{ env.SCCACHE_KEY }}
         path: ~/.cache/sccache
@@ -107,7 +111,7 @@ runs:
     # ── Auto-detect: save cargo + target ──
     - name: Save cargo (GitHub)
       uses: actions/cache/save@v5
-      if: always() && inputs.key == '' && env.CARGO_CACHE_KEY != '' && env.CARGO_CACHE_HIT != 'true' && steps.resolve-provider.outputs.provider != 'warp'
+      if: always() && inputs.key == '' && env.CARGO_CACHE_KEY != '' && steps.resolve-provider.outputs.provider != 'warp'
       with:
         key: ${{ env.CARGO_CACHE_KEY }}
         path: |
@@ -117,7 +121,7 @@ runs:
 
     - name: Save cargo (Warp)
       uses: WarpBuilds/cache/save@v1
-      if: always() && inputs.key == '' && env.CARGO_CACHE_KEY != '' && env.CARGO_CACHE_HIT != 'true' && steps.resolve-provider.outputs.provider == 'warp'
+      if: always() && inputs.key == '' && env.CARGO_CACHE_KEY != '' && steps.resolve-provider.outputs.provider == 'warp'
       with:
         key: ${{ env.CARGO_CACHE_KEY }}
         path: |
