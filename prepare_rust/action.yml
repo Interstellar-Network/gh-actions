@@ -29,6 +29,10 @@ inputs:
   toolchain_components:
     description: "rust toolchain components"
     required: true
+  target:
+    description: "Rust target triple (e.g. x86_64-unknown-linux-gnu, armv7-linux-androideabi). Auto-detected from 'rustc -vV' if not set."
+    required: false
+    default: ""
   install_sccache:
     description: "Install sccache"
     required: false
@@ -154,6 +158,25 @@ runs:
       working-directory: ${{ inputs.working-directory }}
 
     ############################################################################
+    # Detect the Rust target triple: use input.target if set, otherwise detect from rustc.
+    # This is used in cache keys to prevent cross-contamination between different
+    # compilation targets (e.g. native x86_64 vs android armv7 vs no_std thumbv7em).
+    - name: Detect Rust target triple
+      id: detect-target
+      run: |
+        if [ -n "${{ inputs.target }}" ]; then
+          TRIPLE="${{ inputs.target }}"
+        elif [ -n "${CARGO_BUILD_TARGET}" ]; then
+          TRIPLE="${CARGO_BUILD_TARGET}"
+        else
+          TRIPLE="$(rustc -vV | grep host | awk '{print $2}')"
+        fi
+        echo "triple=${TRIPLE}" >> "$GITHUB_OUTPUT"
+        echo "RUST_TARGET_TRIPLE=${TRIPLE}" >> "$GITHUB_ENV"
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+
+    ############################################################################
     # Sccache restore: dual-provider (GitHub or WarpBuilds).
     # Only one runs based on inputs.cache-provider.
     # The corresponding save is done separately with if: always()
@@ -164,9 +187,10 @@ runs:
       if: fromJSON(inputs.install_sccache)
       run: |
         echo "path=~/.cache/sccache" >> "$GITHUB_OUTPUT"
-        echo "key=sccache-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-${{ hashFiles('**/Cargo.lock') }}" >> "$GITHUB_OUTPUT"
+        echo "key=sccache-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-${{ steps.detect-target.outputs.triple }}-${{ hashFiles('**/Cargo.lock') }}" >> "$GITHUB_OUTPUT"
         echo "restore-keys<<EOF" >> "$GITHUB_OUTPUT"
-        echo "sccache-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-${{ hashFiles('**/Cargo.lock') }}-" >> "$GITHUB_OUTPUT"
+        echo "sccache-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-${{ steps.detect-target.outputs.triple }}-${{ hashFiles('**/Cargo.lock') }}-" >> "$GITHUB_OUTPUT"
+        echo "sccache-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-${{ steps.detect-target.outputs.triple }}-" >> "$GITHUB_OUTPUT"
         echo "sccache-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-" >> "$GITHUB_OUTPUT"
         echo "sccache-${{ runner.os }}-" >> "$GITHUB_OUTPUT"
         echo "EOF" >> "$GITHUB_OUTPUT"
@@ -216,9 +240,10 @@ runs:
         echo "~/.cargo/git/db/" >> "$GITHUB_OUTPUT"
         echo "${{ inputs.working-directory }}/target/" >> "$GITHUB_OUTPUT"
         echo "EOF" >> "$GITHUB_OUTPUT"
-        echo "key=cargo-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-${{ hashFiles('**/Cargo.lock') }}" >> "$GITHUB_OUTPUT"
+        echo "key=cargo-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-${{ steps.detect-target.outputs.triple }}-${{ hashFiles('**/Cargo.lock') }}" >> "$GITHUB_OUTPUT"
         echo "restore-keys<<EOF" >> "$GITHUB_OUTPUT"
-        echo "cargo-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-${{ hashFiles('**/Cargo.lock') }}-" >> "$GITHUB_OUTPUT"
+        echo "cargo-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-${{ steps.detect-target.outputs.triple }}-${{ hashFiles('**/Cargo.lock') }}-" >> "$GITHUB_OUTPUT"
+        echo "cargo-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-${{ steps.detect-target.outputs.triple }}-" >> "$GITHUB_OUTPUT"
         echo "cargo-${{ runner.os }}-${{ steps.set-rust-compilerid.outputs.rust-compilerid }}-" >> "$GITHUB_OUTPUT"
         echo "cargo-${{ runner.os }}-" >> "$GITHUB_OUTPUT"
         echo "EOF" >> "$GITHUB_OUTPUT"
