@@ -45,6 +45,14 @@ outputs:
   cache-sccache-hit:
     description: "Whether sccache was restored with an exact key match ('true' or 'false', empty if install_sccache is false)"
     value: "${{ steps.restore-sccache-github.outputs.cache-hit || steps.restore-sccache-warp.outputs.cache-hit }}"
+  cache-cargo-key:
+    description: "The primary cache key used for cargo+target restore (empty if install_sccache is false — since sccache must trigger first)"
+    value: "${{ steps.restore-cargo-github.outputs.cache-primary-key || steps.restore-cargo-warp.outputs.cache-primary-key }}"
+  cache-cargo-hit:
+    description: "Whether cargo+target cache was restored with an exact key match ('true' or 'false', empty if install_sccache is false)"
+    value: "${{ steps.restore-cargo-github.outputs.cache-hit || steps.restore-cargo-warp.outputs.cache-hit }}"
+
+runs:
   using: "composite"
   steps:
     ############################################################################
