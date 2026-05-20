@@ -1,12 +1,13 @@
 name: "save-cache"
-description: "Save a cache path with always() pattern — dual-provider switching is handled internally"
+description: "Save cache with always() pattern — dual-provider switching is handled internally"
 
-# Saves the given cache path using actions/cache/save@v5 (GitHub runners) or
+# Saves cache using actions/cache/save@v5 (GitHub runners) or
 # WarpBuilds/cache/save@v1 (Warp Build runners).
-# The provider is autonomously resolved (in order of precedence):
-#   1. env.CACHE_PROVIDER  — exported by prepare/prepare_rust action
-#   2. inputs.cache-provider — explicit override (default: 'github')
-#   3. 'github' — ultimate fallback
+#
+# TWO MODES:
+#   1. Explicit: provide key + path + cache-hit (backward compat) — saves ONE entry
+#   2. Auto-detect: omit inputs — reads env vars exported by prepare/prepare_rust
+#      and saves ALL cache types that need it (ccache, sccache, cargo+target).
 #
 # Callers add this *after* the build/test step with if: always() so the cache
 # is persisted even on failure.  Provider switching is invisible:
@@ -19,20 +20,19 @@ description: "Save a cache path with always() pattern — dual-provider switchin
 #
 #     - uses: Interstellar-Network/gh-actions/save-cache@...
 #       if: always()
-#       with:
-#         key: ${{ env.CACHE_CCACHE_KEY }}   # or env.SCCACHE_KEY
-#         cache-hit: ${{ env.CACHE_CCACHE_HIT }}
-#         path: ~/.cache/ccache               # or ~/.cache/sccache
+#       # no inputs needed — auto-detects ccache, sccache, cargo from env
 
 inputs:
   key:
-    description: "The cache key (from prepare/prepare_rust action output or env var)."
-    required: true
+    description: "Cache key (optional). When set, saves a single entry (backward compat). When empty, auto-detects all cache types from env vars."
+    required: false
+    default: ""
   path:
-    description: "Path(s) to cache. Multi-line for multiple paths."
-    required: true
+    description: "Path(s) to cache (used with key). Optional; required only if key is set."
+    required: false
+    default: ""
   cache-hit:
-    description: "When 'true', skips saving (avoids uploading an identical cache). Default: 'false'."
+    description: "When 'true', skips saving. Default: 'false'."
     required: false
     default: "false"
   cache-provider:
@@ -44,7 +44,6 @@ runs:
   using: "composite"
   steps:
     # Resolve the effective cache provider so callers never need to think about it.
-    # Precedence: env (runtime) > inputs (from vars) > 'github'
     - name: Resolve cache provider
       id: resolve-provider
       run: |
@@ -52,25 +51,76 @@ runs:
         echo "provider=$PROVIDER" >> "$GITHUB_OUTPUT"
       shell: bash
 
-    - name: Save (GitHub Cache)
-      uses: actions/cache/save@v5
-      if: always() && inputs.cache-hit != 'true' && steps.resolve-provider.outputs.provider != 'warp'
-      with:
-        key: ${{ inputs.key }}
-        path: ${{ inputs.path }}
-
-    - name: Save (WarpBuilds Cache)
-      uses: WarpBuilds/cache/save@v1
-      if: always() && inputs.cache-hit != 'true' && steps.resolve-provider.outputs.provider == 'warp'
-      with:
-        key: ${{ inputs.key }}
-        path: ${{ inputs.path }}
-
-    # Print cache statistics (always, even if save was skipped due to cache-hit).
-    # Each tool gracefully reports "not found" if not installed.
+    # ── Print cache statistics (always, even if save is skipped) ──
     - name: Print cache stats
       if: always()
       run: |
         ccache --show-stats 2>/dev/null || echo "ccache not found!"
         sccache --show-stats 2>/dev/null || echo "sccache not found!"
       shell: bash
+
+    # ── Explicit single-cache mode (when key is provided) ──
+    - name: Save single (GitHub)
+      uses: actions/cache/save@v5
+      if: always() && inputs.key != '' && inputs.cache-hit != 'true' && steps.resolve-provider.outputs.provider != 'warp'
+      with:
+        key: ${{ inputs.key }}
+        path: ${{ inputs.path }}
+
+    - name: Save single (Warp)
+      uses: WarpBuilds/cache/save@v1
+      if: always() && inputs.key != '' && inputs.cache-hit != 'true' && steps.resolve-provider.outputs.provider == 'warp'
+      with:
+        key: ${{ inputs.key }}
+        path: ${{ inputs.path }}
+
+    # ── Auto-detect mode (when key is empty): save ccache ──
+    - name: Save ccache (GitHub)
+      uses: actions/cache/save@v5
+      if: always() && inputs.key == '' && env.CACHE_CCACHE_KEY != '' && env.CACHE_CCACHE_HIT != 'true' && steps.resolve-provider.outputs.provider != 'warp'
+      with:
+        key: ${{ env.CACHE_CCACHE_KEY }}
+        path: ~/.cache/ccache
+
+    - name: Save ccache (Warp)
+      uses: WarpBuilds/cache/save@v1
+      if: always() && inputs.key == '' && env.CACHE_CCACHE_KEY != '' && env.CACHE_CCACHE_HIT != 'true' && steps.resolve-provider.outputs.provider == 'warp'
+      with:
+        key: ${{ env.CACHE_CCACHE_KEY }}
+        path: ~/.cache/ccache
+
+    # ── Auto-detect: save sccache ──
+    - name: Save sccache (GitHub)
+      uses: actions/cache/save@v5
+      if: always() && inputs.key == '' && env.SCCACHE_KEY != '' && env.SCCACHE_HIT != 'true' && steps.resolve-provider.outputs.provider != 'warp'
+      with:
+        key: ${{ env.SCCACHE_KEY }}
+        path: ~/.cache/sccache
+
+    - name: Save sccache (Warp)
+      uses: WarpBuilds/cache/save@v1
+      if: always() && inputs.key == '' && env.SCCACHE_KEY != '' && env.SCCACHE_HIT != 'true' && steps.resolve-provider.outputs.provider == 'warp'
+      with:
+        key: ${{ env.SCCACHE_KEY }}
+        path: ~/.cache/sccache
+
+    # ── Auto-detect: save cargo + target ──
+    - name: Save cargo (GitHub)
+      uses: actions/cache/save@v5
+      if: always() && inputs.key == '' && env.CARGO_CACHE_KEY != '' && env.CARGO_CACHE_HIT != 'true' && steps.resolve-provider.outputs.provider != 'warp'
+      with:
+        key: ${{ env.CARGO_CACHE_KEY }}
+        path: |
+          ~/.cargo/registry/
+          ~/.cargo/git/db/
+          ${{ github.workspace }}/target/
+
+    - name: Save cargo (Warp)
+      uses: WarpBuilds/cache/save@v1
+      if: always() && inputs.key == '' && env.CARGO_CACHE_KEY != '' && env.CARGO_CACHE_HIT != 'true' && steps.resolve-provider.outputs.provider == 'warp'
+      with:
+        key: ${{ env.CARGO_CACHE_KEY }}
+        path: |
+          ~/.cargo/registry/
+          ~/.cargo/git/db/
+          ${{ github.workspace }}/target/
