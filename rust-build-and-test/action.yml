@@ -43,34 +43,55 @@ runs:
         echo "provider=$PROVIDER" >> "$GITHUB_OUTPUT"
       shell: bash
 
+    - name: Compute variant-specific cache key
+      id: variant-key
+      if: always()
+      run: |
+        # Hash inputs that differ between matrix variants so each variant
+        # gets a unique save key — no race when parallel jobs share the same
+        # Cargo.lock but compile different features.
+        # Non-matrix callers have default (empty) test_args → no suffix → exact key match.
+        SUFFIX=""
+        if [ -n "${{ inputs.test_args }}" ]; then
+          SUFFIX="-$(echo "${{ inputs.test_args }}" | sha256sum | cut -c1-16)"
+        fi
+        # Derive effective keys from env vars (set by prepare_rust)
+        if [ -n "${SCCACHE_KEY}" ]; then
+          echo "sccache-key=${SCCACHE_KEY}${SUFFIX}" >> "$GITHUB_OUTPUT"
+        fi
+        if [ -n "${CARGO_CACHE_KEY}" ]; then
+          echo "cargo-key=${CARGO_CACHE_KEY}${SUFFIX}" >> "$GITHUB_OUTPUT"
+        fi
+      shell: bash
+
     - uses: actions/cache/save@v5
-      if: always() && env.SCCACHE_KEY != '' && steps.save-resolve-provider.outputs.provider != 'warp'
+      if: always() && steps.variant-key.outputs.sccache-key != '' && steps.save-resolve-provider.outputs.provider != 'warp'
       with:
-        key: ${{ env.SCCACHE_KEY }}
+        key: ${{ steps.variant-key.outputs.sccache-key }}
         path: ~/.cache/sccache
 
     # WarpBuilds cache save — only active when provider is 'warp'.
     # See https://www.warpbuild.com/docs/ci/features/caching#%EF%B8%8F-read-first
     # — standard actions/cache is the recommended default.
     - uses: WarpBuilds/cache/save@v1
-      if: always() && env.SCCACHE_KEY != '' && steps.save-resolve-provider.outputs.provider == 'warp'
+      if: always() && steps.variant-key.outputs.sccache-key != '' && steps.save-resolve-provider.outputs.provider == 'warp'
       with:
-        key: ${{ env.SCCACHE_KEY }}
+        key: ${{ steps.variant-key.outputs.sccache-key }}
         path: ~/.cache/sccache
 
     - uses: actions/cache/save@v5
-      if: always() && env.CARGO_CACHE_KEY != '' && steps.save-resolve-provider.outputs.provider != 'warp'
+      if: always() && steps.variant-key.outputs.cargo-key != '' && steps.save-resolve-provider.outputs.provider != 'warp'
       with:
-        key: ${{ env.CARGO_CACHE_KEY }}
+        key: ${{ steps.variant-key.outputs.cargo-key }}
         path: |
           ~/.cargo/registry/
           ~/.cargo/git/db/
           ${{ inputs.working-directory }}/target/
 
     - uses: WarpBuilds/cache/save@v1
-      if: always() && env.CARGO_CACHE_KEY != '' && steps.save-resolve-provider.outputs.provider == 'warp'
+      if: always() && steps.variant-key.outputs.cargo-key != '' && steps.save-resolve-provider.outputs.provider == 'warp'
       with:
-        key: ${{ env.CARGO_CACHE_KEY }}
+        key: ${{ steps.variant-key.outputs.cargo-key }}
         path: |
           ~/.cargo/registry/
           ~/.cargo/git/db/
