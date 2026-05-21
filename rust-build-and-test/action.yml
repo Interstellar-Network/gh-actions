@@ -77,11 +77,9 @@ runs:
         restore-keys: ${{ steps.sccache-config.outputs.restore-keys }}
 
     ############################################################################
-    # Cargo registry + git db + target directory restore.
-    # Also SHA-based like sccache: target/ is incremental, so adding or removing
-    # a dependency does not invalidate existing compiled objects. The save always
-    # creates a fresh entry (SHA is unique per commit); restore-keys find the
-    # most recent matching entry from any branch.
+    # Cargo registry + git db restore (no target/ — sccache handles compilation
+    # caching. target/ is too large and would exhaust GitHub's 10 GB limit).
+    # SHA-based key for uniqueness; restore-keys find the most recent match.
 
     - name: Set cargo cache config
       id: cargo-config
@@ -92,7 +90,6 @@ runs:
         echo "path<<EOF" >> "$GITHUB_OUTPUT"
         echo "~/.cargo/registry/" >> "$GITHUB_OUTPUT"
         echo "~/.cargo/git/db/" >> "$GITHUB_OUTPUT"
-        echo "${{ inputs.working-directory }}/target/" >> "$GITHUB_OUTPUT"
         echo "EOF" >> "$GITHUB_OUTPUT"
         if [ -n "$VARIANT" ]; then
           echo "key=cargo-${{ runner.os }}-${{ runner.arch }}-${COMPILER}-${TRIPLE}-${VARIANT}-${{ github.sha }}" >> "$GITHUB_OUTPUT"
@@ -107,7 +104,7 @@ runs:
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
-    - name: cargo + target restore (GitHub)
+    - name: cargo restore (GitHub)
       id: restore-cargo-github
       if: steps.resolve-provider.outputs.provider != 'warp'
       uses: actions/cache/restore@v5
@@ -116,7 +113,7 @@ runs:
         key: ${{ steps.cargo-config.outputs.key }}
         restore-keys: ${{ steps.cargo-config.outputs.restore-keys }}
 
-    - name: cargo + target restore (WarpBuilds)
+    - name: cargo restore (WarpBuilds)
       id: restore-cargo-warp
       if: steps.resolve-provider.outputs.provider == 'warp'
       uses: WarpBuilds/cache/restore@v1
@@ -171,7 +168,6 @@ runs:
         path: |
           ~/.cargo/registry/
           ~/.cargo/git/db/
-          ${{ inputs.working-directory }}/target/
 
     - uses: WarpBuilds/cache/save@v1
       if: always() && steps.export-keys.outputs.cargo-key != '' && steps.resolve-provider.outputs.provider == 'warp'
@@ -180,7 +176,6 @@ runs:
         path: |
           ~/.cargo/registry/
           ~/.cargo/git/db/
-          ${{ inputs.working-directory }}/target/
 
     - name: Print cache stats
       if: always()
