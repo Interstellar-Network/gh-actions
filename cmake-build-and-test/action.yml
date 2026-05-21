@@ -20,6 +20,65 @@ inputs:
 runs:
   using: "composite"
   steps:
+    ############################################################################
+    # Ccache restore: dual-provider — uses env.CACHE_BACKEND (exported by
+    # prepare/action.yml) to select between GitHub or WarpBuilds backends.
+    # Per https://www.warpbuild.com/docs/ci/features/caching#%EF%B8%8F-read-first,
+    # standard actions/cache is recommended for most users; the default is 'github'.
+    # WarpBuilds cache is only needed for BYOC or advanced use cases.
+    # If CACHE_BACKEND is not set (standalone use), falls back to 'github'.
+
+    - name: Resolve cache provider
+      id: resolve-provider
+      run: |
+        PROVIDER="${CACHE_BACKEND:-github}"
+        echo "provider=$PROVIDER" >> "$GITHUB_OUTPUT"
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+
+    - name: Set ccache cache config
+      id: ccache-config
+      run: |
+        echo "path=~/.cache/ccache" >> "$GITHUB_OUTPUT"
+        echo "key=cache-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+        echo "restore-keys<<EOF" >> "$GITHUB_OUTPUT"
+        echo "cache-${{ runner.os }}-${{ runner.arch }}-" >> "$GITHUB_OUTPUT"
+        echo "cache-${{ runner.os }}-" >> "$GITHUB_OUTPUT"
+        echo "EOF" >> "$GITHUB_OUTPUT"
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+
+    - name: ccache restore (GitHub)
+      id: restore-github
+      if: steps.resolve-provider.outputs.provider != 'warp'
+      uses: actions/cache/restore@v5
+      with:
+        path: ${{ steps.ccache-config.outputs.path }}
+        key: ${{ steps.ccache-config.outputs.key }}
+        restore-keys: ${{ steps.ccache-config.outputs.restore-keys }}
+
+    # WarpBuilds ccache restore — only active when provider is 'warp'.
+    - name: ccache restore (WarpBuilds)
+      id: restore-warp
+      if: steps.resolve-provider.outputs.provider == 'warp'
+      uses: WarpBuilds/cache/restore@v1
+      with:
+        path: ${{ steps.ccache-config.outputs.path }}
+        key: ${{ steps.ccache-config.outputs.key }}
+        restore-keys: ${{ steps.ccache-config.outputs.restore-keys }}
+
+    # Export the cache key (from whichever provider ran) so save steps below
+    # can reference it without duplicating the config logic.
+    # Since the primary key is SHA-based (unique per commit), the restore
+    # will always use restore-keys. We save under the primary key so future
+    # runs find this cache via restore-keys.
+    - name: Export ccache key for save
+      id: export-key
+      run: |
+        echo "CCHACHE_KEY=${{ steps.ccache-config.outputs.key }}" >> "$GITHUB_OUTPUT"
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+
     ###################################
     - name: clang-format
       run: fd --type f --extension cpp --extension h --extension hpp --extension cc --extension cxx --extension hh --extension hxx | xargs clang-format --dry-run -Werror
@@ -64,30 +123,21 @@ runs:
       working-directory: ${{ inputs.working-directory }}
 
     # ── Cache save (always, even on failure) ──
+    # Uses the key from restore (or a fallback computed key) since the build
+    # may have added new ccache objects. If the key already exists (exact hit
+    # from restore), the save simply confirms the existing entry is valid.
     # Provider resolved from env.CACHE_BACKEND (exported by prepare) or 'github'.
-    # See https://www.warpbuild.com/docs/ci/features/caching#%EF%B8%8F-read-first
-    # for WarpBuilds caching docs.  Their docs recommend standard actions/cache
-    # for most users — the default provider is 'github' for this reason.
-    - name: Resolve cache provider for save
-      id: save-resolve-provider
-      run: |
-        PROVIDER="${CACHE_BACKEND:-github}"
-        echo "provider=$PROVIDER" >> "$GITHUB_OUTPUT"
-      shell: bash
 
     - uses: actions/cache/save@v5
-      if: always() && env.CACHE_CCACHE_KEY != '' && steps.save-resolve-provider.outputs.provider != 'warp'
+      if: always() && steps.resolve-provider.outputs.provider != 'warp'
       with:
-        key: ${{ env.CACHE_CCACHE_KEY }}
+        key: ${{ steps.export-key.outputs.CCHACHE_KEY }}
         path: ~/.cache/ccache
 
-    # WarpBuilds cache save — only active when provider is 'warp'.
-    # See https://www.warpbuild.com/docs/ci/features/caching#%EF%B8%8F-read-first
-    # — standard actions/cache is the recommended default.
     - uses: WarpBuilds/cache/save@v1
-      if: always() && env.CACHE_CCACHE_KEY != '' && steps.save-resolve-provider.outputs.provider == 'warp'
+      if: always() && steps.resolve-provider.outputs.provider == 'warp'
       with:
-        key: ${{ env.CACHE_CCACHE_KEY }}
+        key: ${{ steps.export-key.outputs.CCHACHE_KEY }}
         path: ~/.cache/ccache
 
     - name: Print cache stats
@@ -96,6 +146,7 @@ runs:
         ccache --show-stats 2>/dev/null || echo "ccache not found!"
         sccache --show-stats 2>/dev/null || echo "sccache not found!"
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
 
 
     ############################################################################
