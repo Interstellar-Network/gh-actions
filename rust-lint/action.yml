@@ -34,25 +34,7 @@ runs:
       working-directory: ${{ inputs.working-directory }}
 
     ############################################################################
-    # Variant suffix: when fmt_args/clippy_args differ between matrix jobs, hash
-    # them into the cache key so each variant gets its own key (no race).
-
-    - name: Compute variant suffix
-      id: variant-suffix
-      run: |
-        SUFFIX=""
-        if [ -n "${{ inputs.fmt_args }}" ] || [ -n "${{ inputs.clippy_args }}" ]; then
-          ARGS="${{ inputs.fmt_args }}${{ inputs.clippy_args }}"
-          ARGS_HASH=$(echo "$ARGS" | sha256sum | cut -c1-12)
-          SUFFIX="-${ARGS_HASH}"
-        fi
-        echo "suffix=${SUFFIX}" >> "$GITHUB_OUTPUT"
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-
-    ############################################################################
-    # Sccache is content-addressable (hashes source + compiler + flags internally),
-    # so the cache key only needs OS + arch + SHA for uniqueness. The restore-keys
+    # Sccache is content-addressable
     # finds the most recent sccache cache from any branch; sccache validates which
     # objects are still valid internally. No Cargo.lock needed.
     #
@@ -93,14 +75,14 @@ runs:
 
     ############################################################################
     # Cargo registry + git db + target directory restore.
-    # Unlike sccache, compiled crate artifacts DO depend on the dep tree.
+    # SHA-based like sccache: target/ is incremental, adding/removing deps
+    # does not invalidate existing compiled objects.
 
     - name: Set cargo cache config
       id: cargo-config
       run: |
         TRIPLE="${RUST_TARGET_TRIPLE:-unknown}"
         COMPILER="${RUST_COMPILER_ID:-unknown}"
-        LOCKHASH="${{ hashFiles('**/Cargo.lock') }}"
         VARIANT="${{ inputs.cache-variant }}"
         echo "path<<EOF" >> "$GITHUB_OUTPUT"
         echo "~/.cargo/registry/" >> "$GITHUB_OUTPUT"
@@ -108,12 +90,11 @@ runs:
         echo "${{ inputs.working-directory }}/target/" >> "$GITHUB_OUTPUT"
         echo "EOF" >> "$GITHUB_OUTPUT"
         if [ -n "$VARIANT" ]; then
-          echo "key=cargo-${{ runner.os }}-${{ runner.arch }}-${COMPILER}-${TRIPLE}-${LOCKHASH}-${VARIANT}" >> "$GITHUB_OUTPUT"
+          echo "key=cargo-${{ runner.os }}-${{ runner.arch }}-${COMPILER}-${TRIPLE}-${{ github.sha }}-${VARIANT}" >> "$GITHUB_OUTPUT"
         else
-          echo "key=cargo-${{ runner.os }}-${{ runner.arch }}-${COMPILER}-${TRIPLE}-${LOCKHASH}" >> "$GITHUB_OUTPUT"
+          echo "key=cargo-${{ runner.os }}-${{ runner.arch }}-${COMPILER}-${TRIPLE}-${{ github.sha }}" >> "$GITHUB_OUTPUT"
         fi
         echo "restore-keys<<EOF" >> "$GITHUB_OUTPUT"
-        echo "cargo-${{ runner.os }}-${{ runner.arch }}-${COMPILER}-${TRIPLE}-${LOCKHASH}-" >> "$GITHUB_OUTPUT"
         echo "cargo-${{ runner.os }}-${{ runner.arch }}-${COMPILER}-${TRIPLE}-" >> "$GITHUB_OUTPUT"
         echo "cargo-${{ runner.os }}-${{ runner.arch }}-${COMPILER}-" >> "$GITHUB_OUTPUT"
         echo "cargo-${{ runner.os }}-${{ runner.arch }}-" >> "$GITHUB_OUTPUT"

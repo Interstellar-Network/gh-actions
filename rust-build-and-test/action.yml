@@ -14,6 +14,7 @@ inputs:
     description: "Variant identifier for cache key disambiguation (e.g. ${{ strategy.job-index }} for matrix jobs). One cache entry per variant — no parallel race."
     required: false
     default: ""
+  test_timeout_seconds:
     description: "timeout for: cargo test [run only, no compilation]"
     required: false
     # 60s * 5 = 5 minutes
@@ -32,28 +33,6 @@ runs:
         echo "provider=$PROVIDER" >> "$GITHUB_OUTPUT"
       shell: bash
       working-directory: ${{ inputs.working-directory }}
-
-    ############################################################################
-    # Variant suffix: when test_args differs between matrix jobs, hash the args
-    # into the cache key so each variant gets its own key (no race). Empty args
-    # → no suffix → exact key match with restore from prepare_rust.
-
-    - name: Compute variant suffix
-      id: variant-suffix
-      run: |
-        SUFFIX=""
-        if [ -n "${{ inputs.test_args }}" ]; then
-          SUFFIX="-${{ hashFiles('**/Cargo.lock') }}"
-          # If test_args is set, append its hash to further differentiate.
-          # Using the hashFiles of the Cargo.lock as base, test_args hash as suffix.
-          ARGS="${{ inputs.test_args }}"
-          ARGS_HASH=$(echo "$ARGS" | sha256sum | cut -c1-12)
-          SUFFIX="${SUFFIX}-${ARGS_HASH}"
-        fi
-        echo "suffix=${SUFFIX}" >> "$GITHUB_OUTPUT"
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-
 
     ############################################################################
     # Sccache is content-addressable (hashes source + compiler + flags internally),
@@ -99,15 +78,16 @@ runs:
 
     ############################################################################
     # Cargo registry + git db + target directory restore.
-    # Unlike sccache, compiled crate artifacts DO depend on the dep tree,
-    # so we keep Cargo.lock + compiler + target triple in the key.
+    # Also SHA-based like sccache: target/ is incremental, so adding or removing
+    # a dependency does not invalidate existing compiled objects. The save always
+    # creates a fresh entry (SHA is unique per commit); restore-keys find the
+    # most recent matching entry from any branch.
 
     - name: Set cargo cache config
       id: cargo-config
       run: |
         TRIPLE="${RUST_TARGET_TRIPLE:-unknown}"
         COMPILER="${RUST_COMPILER_ID:-unknown}"
-        LOCKHASH="${{ hashFiles('**/Cargo.lock') }}"
         VARIANT="${{ inputs.cache-variant }}"
         echo "path<<EOF" >> "$GITHUB_OUTPUT"
         echo "~/.cargo/registry/" >> "$GITHUB_OUTPUT"
@@ -115,12 +95,11 @@ runs:
         echo "${{ inputs.working-directory }}/target/" >> "$GITHUB_OUTPUT"
         echo "EOF" >> "$GITHUB_OUTPUT"
         if [ -n "$VARIANT" ]; then
-          echo "key=cargo-${{ runner.os }}-${{ runner.arch }}-${COMPILER}-${TRIPLE}-${LOCKHASH}-${VARIANT}" >> "$GITHUB_OUTPUT"
+          echo "key=cargo-${{ runner.os }}-${{ runner.arch }}-${COMPILER}-${TRIPLE}-${{ github.sha }}-${VARIANT}" >> "$GITHUB_OUTPUT"
         else
-          echo "key=cargo-${{ runner.os }}-${{ runner.arch }}-${COMPILER}-${TRIPLE}-${LOCKHASH}" >> "$GITHUB_OUTPUT"
+          echo "key=cargo-${{ runner.os }}-${{ runner.arch }}-${COMPILER}-${TRIPLE}-${{ github.sha }}" >> "$GITHUB_OUTPUT"
         fi
         echo "restore-keys<<EOF" >> "$GITHUB_OUTPUT"
-        echo "cargo-${{ runner.os }}-${{ runner.arch }}-${COMPILER}-${TRIPLE}-${LOCKHASH}-" >> "$GITHUB_OUTPUT"
         echo "cargo-${{ runner.os }}-${{ runner.arch }}-${COMPILER}-${TRIPLE}-" >> "$GITHUB_OUTPUT"
         echo "cargo-${{ runner.os }}-${{ runner.arch }}-${COMPILER}-" >> "$GITHUB_OUTPUT"
         echo "cargo-${{ runner.os }}-${{ runner.arch }}-" >> "$GITHUB_OUTPUT"
