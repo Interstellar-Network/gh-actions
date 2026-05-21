@@ -51,6 +51,9 @@ runs:
           echo "key=sccache-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}" >> "$GITHUB_OUTPUT"
         fi
         echo "restore-keys<<EOF" >> "$GITHUB_OUTPUT"
+        if [ -n "$VARIANT" ]; then
+          echo "sccache-${{ runner.os }}-${{ runner.arch }}-${VARIANT}-" >> "$GITHUB_OUTPUT"
+        fi
         echo "sccache-${{ runner.os }}-${{ runner.arch }}-" >> "$GITHUB_OUTPUT"
         echo "EOF" >> "$GITHUB_OUTPUT"
       shell: bash
@@ -93,6 +96,9 @@ runs:
           echo "key=cargo-${{ runner.os }}-${{ runner.arch }}-${COMPILER}-${TRIPLE}-${{ github.sha }}" >> "$GITHUB_OUTPUT"
         fi
         echo "restore-keys<<EOF" >> "$GITHUB_OUTPUT"
+        if [ -n "$VARIANT" ]; then
+          echo "cargo-${{ runner.os }}-${{ runner.arch }}-${COMPILER}-${TRIPLE}-${VARIANT}-" >> "$GITHUB_OUTPUT"
+        fi
         echo "cargo-${{ runner.os }}-${{ runner.arch }}-${COMPILER}-${TRIPLE}-" >> "$GITHUB_OUTPUT"
         echo "cargo-${{ runner.os }}-${{ runner.arch }}-${COMPILER}-" >> "$GITHUB_OUTPUT"
         echo "cargo-${{ runner.os }}-${{ runner.arch }}-" >> "$GITHUB_OUTPUT"
