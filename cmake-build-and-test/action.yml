@@ -67,6 +67,12 @@ runs:
         key: ${{ steps.ccache-config.outputs.key }}
         restore-keys: ${{ steps.ccache-config.outputs.restore-keys }}
 
+    - name: Zero ccache stats after restore
+      if: always()
+      run: ccache --zero-stats 2>/dev/null || true
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+
     # Export the cache key (from whichever provider ran) so save steps below
     # can reference it without duplicating the config logic.
     # Since the primary key is SHA-based (unique per commit), the restore

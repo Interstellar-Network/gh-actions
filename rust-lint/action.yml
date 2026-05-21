@@ -125,6 +125,17 @@ runs:
         restore-keys: ${{ steps.cargo-config.outputs.restore-keys }}
 
     ############################################################################
+    # Zero stats after restore so the final stats reflect only this run.
+
+    - name: Zero sccache/ccache stats after restore
+      if: always()
+      run: |
+        sccache --zero-stats 2>/dev/null || true
+        ccache --zero-stats 2>/dev/null || true
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+
+    ############################################################################
     # Lint
 
     - name: Run cargo fmt
@@ -141,6 +152,12 @@ runs:
     ############################################################################
     # Cache save (always, even on failure). Since sccache has a SHA-based key
     # (unique per commit), the save always succeeds — no race with parallel jobs.
+
+    - name: Stop sccache server before saving
+      if: always()
+      run: sccache --stop-server 2>/dev/null || true
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
 
     - name: Export cache keys for save
       id: export-keys
