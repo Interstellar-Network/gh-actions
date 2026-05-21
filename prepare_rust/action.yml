@@ -38,7 +38,7 @@ inputs:
     required: false
     default: "true"
   cache-provider:
-    description: "Cache provider: 'github' (default, uses actions/cache) or 'warp' (uses WarpBuilds/cache). Fallback input: if prepare ran first it exported CACHE_BACKEND to env, which takes precedence. The org-level variable is vars.CACHE_PROVIDER — set it in the GitHub web UI, pass it to the prepare step as cache-provider, and everything downstream auto-detects."
+    description: "Cache provider: 'github' (default, uses actions/cache) or 'warp' (uses WarpBuilds/cache). Per WarpBuilds docs (https://warpbuild.com/docs/ci/features/caching#%EF%B8%8F-read-first), standard actions/cache is recommended for most users. If prepare ran first it exported CACHE_BACKEND to env, which takes precedence over this input. Org-level: vars.CACHE_PROVIDER."
     required: false
     default: "github"
 
@@ -219,6 +219,10 @@ runs:
         key: ${{ steps.sccache-config.outputs.key }}
         restore-keys: ${{ steps.sccache-config.outputs.restore-keys }}
 
+    # WarpBuilds sccache restore — only active when provider is 'warp'.
+    # Per their docs (https://warpbuild.com/docs/ci/features/caching#%EF%B8%8F-read-first),
+    # standard actions/cache is recommended for most users.
+    # WarpBuilds cache is only needed for BYOC or advanced use cases.
     - name: sccache restore (WarpBuilds)
       id: restore-sccache-warp
       if: fromJSON(inputs.install_sccache) && steps.resolve-backend.outputs.provider == 'warp'
@@ -229,7 +233,7 @@ runs:
         restore-keys: ${{ steps.sccache-config.outputs.restore-keys }}
 
     # Export sccache cache info so downstream actions can reference it
-    # (e.g. in rust-build-and-test, rust-lint, or save-cache).
+    # (e.g. in rust-build-and-test, rust-lint).
     # NOTE: do NOT export CACHE_BACKEND here — it is exported by prepare.
     - name: Export sccache cache info
       if: fromJSON(inputs.install_sccache)
@@ -272,6 +276,9 @@ runs:
         key: ${{ steps.cargo-config.outputs.key }}
         restore-keys: ${{ steps.cargo-config.outputs.restore-keys }}
 
+    # WarpBuilds cargo+target restore — only active when provider is 'warp'.
+    # See WarpBuilds docs (https://warpbuild.com/docs/ci/features/caching#%EF%B8%8F-read-first)
+    # for details — standard actions/cache is the recommended default.
     - name: cargo + target restore (WarpBuilds)
       if: steps.resolve-backend.outputs.provider == 'warp'
       id: restore-cargo-warp

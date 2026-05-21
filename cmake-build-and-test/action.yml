@@ -63,7 +63,40 @@ runs:
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
-    # Cache save: see ../save-cache/action.yml
+    # ── Cache save (always, even on failure) ──
+    # Provider resolved from env.CACHE_BACKEND (exported by prepare) or 'github'.
+    # See https://www.warpbuild.com/docs/ci/features/caching#%EF%B8%8F-read-first
+    # for WarpBuilds caching docs.  Their docs recommend standard actions/cache
+    # for most users — the default provider is 'github' for this reason.
+    - name: Resolve cache provider for save
+      id: save-resolve-provider
+      run: |
+        PROVIDER="${CACHE_BACKEND:-github}"
+        echo "provider=$PROVIDER" >> "$GITHUB_OUTPUT"
+      shell: bash
+
+    - uses: actions/cache/save@v5
+      if: always() && env.CACHE_CCACHE_KEY != '' && steps.save-resolve-provider.outputs.provider != 'warp'
+      with:
+        key: ${{ env.CACHE_CCACHE_KEY }}
+        path: ~/.cache/ccache
+
+    # WarpBuilds cache save — only active when provider is 'warp'.
+    # See https://www.warpbuild.com/docs/ci/features/caching#%EF%B8%8F-read-first
+    # — standard actions/cache is the recommended default.
+    - uses: WarpBuilds/cache/save@v1
+      if: always() && env.CACHE_CCACHE_KEY != '' && steps.save-resolve-provider.outputs.provider == 'warp'
+      with:
+        key: ${{ env.CACHE_CCACHE_KEY }}
+        path: ~/.cache/ccache
+
+    - name: Print cache stats
+      if: always()
+      run: |
+        ccache --show-stats 2>/dev/null || echo "ccache not found!"
+        sccache --show-stats 2>/dev/null || echo "sccache not found!"
+      shell: bash
+
 
     ############################################################################
     - name: Check if conan installed

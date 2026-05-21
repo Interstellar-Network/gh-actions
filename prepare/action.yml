@@ -38,7 +38,7 @@ inputs:
     required: false
     default: "true"
   cache-provider:
-    description: "Cache provider: 'github' (default, uses actions/cache) or 'warp' (uses WarpBuilds/cache). The switch is handled internally by this action; callers only need to set this. Exported as CACHE_BACKEND to GITHUB_ENV so downstream actions (prepare_rust, save-cache) auto-detect. NOTE: this is the action input; the org-level variable is vars.CACHE_PROVIDER."
+    description: "Cache provider: 'github' (default, uses actions/cache) or 'warp' (uses WarpBuilds/cache). Per WarpBuilds docs (https://warpbuild.com/docs/ci/features/caching#%EF%B8%8F-read-first), standard actions/cache is recommended for most users (works on ALL runners including Warp). The switch is handled internally; callers only set this. Exported as CACHE_BACKEND to GITHUB_ENV so downstream actions auto-detect. Org-level: vars.CACHE_PROVIDER."
     required: false
     default: "github"
 
@@ -222,6 +222,10 @@ runs:
         key: ${{ steps.ccache-config.outputs.key }}
         restore-keys: ${{ steps.ccache-config.outputs.restore-keys }}
 
+    # WarpBuilds cache restore — only active when cache-provider is 'warp'.
+    # Per their docs (https://warpbuild.com/docs/ci/features/caching#%EF%B8%8F-read-first),
+    # standard actions/cache is recommended for most users.  WarpBuilds cache
+    # is only needed for BYOC or advanced use cases.
     - name: ccache restore (WarpBuilds)
       id: cache-ccache-restore-warp
       if: fromJSON(inputs.install_ccache) && inputs.cache-provider == 'warp'
