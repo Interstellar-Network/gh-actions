@@ -7,7 +7,7 @@ inputs:
     required: false
     default: "${{ github.workspace }}"
   cache-variant:
-    description: "Variant identifier for cache key disambiguation (e.g. ${{ strategy.job-index }} for matrix jobs). One cache entry per variant — no parallel race."
+    description: "Variant identifier for cache key disambiguation (e.g. strategy.job-index for matrix jobs). One cache entry per variant — no parallel race."
     required: false
     default: ""
   fmt_args:
