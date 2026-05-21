@@ -48,7 +48,7 @@ runs:
         VARIANT="${{ inputs.cache-variant }}"
         echo "path=~/.cache/sccache" >> "$GITHUB_OUTPUT"
         if [ -n "$VARIANT" ]; then
-          echo "key=sccache-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}-${VARIANT}" >> "$GITHUB_OUTPUT"
+          echo "key=sccache-${{ runner.os }}-${{ runner.arch }}-${VARIANT}-${{ github.sha }}" >> "$GITHUB_OUTPUT"
         else
           echo "key=sccache-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}" >> "$GITHUB_OUTPUT"
         fi
@@ -95,7 +95,7 @@ runs:
         echo "${{ inputs.working-directory }}/target/" >> "$GITHUB_OUTPUT"
         echo "EOF" >> "$GITHUB_OUTPUT"
         if [ -n "$VARIANT" ]; then
-          echo "key=cargo-${{ runner.os }}-${{ runner.arch }}-${COMPILER}-${TRIPLE}-${{ github.sha }}-${VARIANT}" >> "$GITHUB_OUTPUT"
+          echo "key=cargo-${{ runner.os }}-${{ runner.arch }}-${COMPILER}-${TRIPLE}-${VARIANT}-${{ github.sha }}" >> "$GITHUB_OUTPUT"
         else
           echo "key=cargo-${{ runner.os }}-${{ runner.arch }}-${COMPILER}-${TRIPLE}-${{ github.sha }}" >> "$GITHUB_OUTPUT"
         fi
