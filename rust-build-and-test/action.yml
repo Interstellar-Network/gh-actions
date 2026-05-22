@@ -19,6 +19,10 @@ inputs:
     required: false
     # 60s * 5 = 5 minutes
     default: "300"
+  run:
+    description: "Optional custom script. When non-empty, replaces the default cargo test --no-run and cargo test run steps. Cache restore/save and stats still happen. Useful for non-standard build scenarios like cross-compilation or custom test commands."
+    required: false
+    default: ""
 
 runs:
   using: "composite"
@@ -141,15 +145,24 @@ runs:
       working-directory: ${{ inputs.working-directory }}
 
     ############################################################################
-    # Build — split compilation and test run, so the compile step gets sccache intercept.
+    # Build — when run: is set, execute the custom script; otherwise do the
+    # default cargo test --no-run + cargo test run split.
 
     - name: cargo test compile [ie --no-run]
+      if: ${{ inputs.run == '' }}
       run: cargo test --no-run ${{ inputs.test_args }}
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
     - name: cargo test run
+      if: ${{ inputs.run == '' }}
       run: timeout ${{ inputs.test_timeout_seconds }} sh -c "cargo test ${{ inputs.test_args }}"
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+
+    - name: Custom run script
+      if: ${{ inputs.run != '' }}
+      run: ${{ inputs.run }}
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 

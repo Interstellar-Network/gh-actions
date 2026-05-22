@@ -1,0 +1,96 @@
+name: "setup-android-ndk"
+description: "Install Android NDK and set up cross-compilation environment variables for Rust build targets."
+#
+# Depends on:
+#   - prepare@ci-v5 or similar for ANDROID_SDK_ROOT
+#   - prepare_rust@ci-v5 (called before this action)
+#
+# After this action, the following env vars are set:
+#   NDK_ROOT, CC_*, CXX_*, AR_*, CARGO_TARGET_*_LINKER for each target,
+#   CMAKE_TOOLCHAIN_FILE, ANDROID_PLATFORM
+#
+# Usage (in a caller workflow):
+#   - uses: Interstellar-Network/gh-actions/setup-android-ndk@ci-v5
+#     with:
+#       cargo-targets: "aarch64-linux-android armv7-linux-androideabi"
+#
+# Then call rust-build-and-test@ci-v5 with run: for the actual cargo build:
+#   - uses: Interstellar-Network/gh-actions/rust-build-and-test@ci-v5
+#     with:
+#       run: cargo build --verbose --target=aarch64-linux-android
+
+inputs:
+  cargo-targets:
+    description: "Space-separated list of Rust target triples to add via rustup target add (e.g. 'aarch64-linux-android armv7-linux-androideabi x86_64-linux-android')"
+    required: true
+  ndk-version:
+    description: "NDK version to install via sdkmanager"
+    required: false
+    default: "25.2.9519653"
+  ndk-api-level:
+    description: "Android API level for NDK toolchain targets"
+    required: false
+    default: "33"
+
+runs:
+  using: "composite"
+  steps:
+    ##############################################################################
+    - run: rustup target add ${{ inputs.cargo-targets }}
+      shell: bash
+
+    # Setup Android SDK and sdkmanager on the runner.
+    # This gives us ANDROID_SDK_ROOT and puts sdkmanager on PATH.
+    - uses: android-actions/setup-android@v4
+
+    ##############################################################################
+    # Remove any pre-installed NDK versions to avoid path conflicts.
+    # GitHub-hosted runners often include an old NDK that can cause warnings.
+    - name: Delete pre-installed NDK versions
+      run: |
+        echo "Removing existing NDK installations..."
+        sdkmanager --list_installed
+        for v in $(sdkmanager --list_installed 2>/dev/null | grep '^  ndk;' | sed 's/^  ndk;//'); do
+          echo "Removing ndk;$v"
+          sdkmanager --uninstall "ndk;$v" || true
+        done
+      shell: bash
+
+    - name: Install NDK ${{ inputs.ndk-version }}
+      run: sdkmanager "ndk;${{ inputs.ndk-version }}"
+      shell: bash
+
+    ##############################################################################
+    # Set per-target environment variables for Rust cross-compilation.
+    # These are consumed by cargo's build scripts and the linker resolution.
+    # All common Android targets are exported even if unused, so the same
+    # action works across repos without per-target configuration.
+    - name: Set NDK environment variables for Rust build targets
+      run: |
+        NDK_ROOT=$ANDROID_SDK_ROOT/ndk/${{ inputs.ndk-version }}
+        API=${{ inputs.ndk-api-level }}
+        TOOLCHAIN=$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64
+
+        echo "NDK_ROOT=$NDK_ROOT" >> $GITHUB_ENV
+
+        # armv7-linux-androideabi
+        echo "CC_armv7_linux_androideabi=$TOOLCHAIN/bin/armv7a-linux-androideabi${API}-clang" >> $GITHUB_ENV
+        echo "AR_armv7_linux_androideabi=$TOOLCHAIN/bin/llvm-ar" >> $GITHUB_ENV
+        echo "CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER=$TOOLCHAIN/bin/armv7a-linux-androideabi${API}-clang" >> $GITHUB_ENV
+
+        # aarch64-linux-android
+        echo "CC_aarch64_linux_android=$TOOLCHAIN/bin/aarch64-linux-android${API}-clang" >> $GITHUB_ENV
+        echo "CXX_aarch64_linux_android=$TOOLCHAIN/bin/aarch64-linux-android${API}-clang++" >> $GITHUB_ENV
+        echo "AR_aarch64_linux_android=$TOOLCHAIN/bin/llvm-ar" >> $GITHUB_ENV
+        echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$TOOLCHAIN/bin/aarch64-linux-android${API}-clang" >> $GITHUB_ENV
+
+        # x86_64-linux-android (used by wallet-app)
+        echo "CC_x86_64_linux_android=$TOOLCHAIN/bin/x86_64-linux-android${API}-clang" >> $GITHUB_ENV
+        echo "CXX_x86_64_linux_android=$TOOLCHAIN/bin/x86_64-linux-android${API}-clang++" >> $GITHUB_ENV
+        echo "AR_x86_64_linux_android=$TOOLCHAIN/bin/llvm-ar" >> $GITHUB_ENV
+        echo "CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER=$TOOLCHAIN/bin/x86_64-linux-android${API}-clang" >> $GITHUB_ENV
+
+        # Shared CMake / generic settings
+        echo "CMAKE_TOOLCHAIN_FILE=$NDK_ROOT/build/cmake/android.toolchain.cmake" >> $GITHUB_ENV
+        echo "ANDROID_PLATFORM=21" >> $GITHUB_ENV
+      shell: bash
