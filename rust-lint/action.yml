@@ -18,6 +18,10 @@ inputs:
     description: "args passed to cargo fmt"
     required: false
     default: "-- -D warnings"
+  restore_cache:
+    description: "Whether to restore cache. Set \"false\" for intermediate calls in consolidated jobs (the first call already populated disk)."
+    required: false
+    default: "true"
   save_cache:
     description: "Whether to save cache at end. Set \"false\" for intermediate calls in consolidated jobs (only the last should save)."
     required: false
@@ -57,14 +61,15 @@ runs:
         echo "restore-keys<<EOF" >> "$GITHUB_OUTPUT"
         if [ -n "$VARIANT" ]; then
           echo "sccache-${{ runner.os }}-${{ runner.arch }}-${VARIANT}-" >> "$GITHUB_OUTPUT"
+        else
+          echo "sccache-${{ runner.os }}-${{ runner.arch }}-" >> "$GITHUB_OUTPUT"
         fi
-        echo "sccache-${{ runner.os }}-${{ runner.arch }}-" >> "$GITHUB_OUTPUT"
         echo "EOF" >> "$GITHUB_OUTPUT"
       shell: bash
       working-directory: ${{ inputs.working-directory }}
     - name: sccache restore (GitHub)
       id: restore-sccache-github
-      if: steps.resolve-provider.outputs.provider != 'warp'
+      if: inputs.restore_cache == 'true' && steps.resolve-provider.outputs.provider != 'warp'
       uses: actions/cache/restore@v5
       with:
         path: ${{ steps.sccache-config.outputs.path }}
@@ -73,7 +78,7 @@ runs:
 
     - name: sccache restore (WarpBuilds)
       id: restore-sccache-warp
-      if: steps.resolve-provider.outputs.provider == 'warp'
+      if: inputs.restore_cache == 'true' && steps.resolve-provider.outputs.provider == 'warp'
       uses: WarpBuilds/cache/restore@v1
       with:
         path: ${{ steps.sccache-config.outputs.path }}
@@ -112,7 +117,7 @@ runs:
 
     - name: cargo restore (GitHub)
       id: restore-cargo-github
-      if: steps.resolve-provider.outputs.provider != 'warp'
+      if: inputs.restore_cache == 'true' && steps.resolve-provider.outputs.provider != 'warp'
       uses: actions/cache/restore@v5
       with:
         path: ${{ steps.cargo-config.outputs.path }}
@@ -121,7 +126,7 @@ runs:
 
     - name: cargo restore (WarpBuilds)
       id: restore-cargo-warp
-      if: steps.resolve-provider.outputs.provider == 'warp'
+      if: inputs.restore_cache == 'true' && steps.resolve-provider.outputs.provider == 'warp'
       uses: WarpBuilds/cache/restore@v1
       with:
         path: ${{ steps.cargo-config.outputs.path }}
