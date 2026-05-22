@@ -55,8 +55,9 @@ runs:
         echo "restore-keys<<EOF" >> "$GITHUB_OUTPUT"
         if [ -n "$VARIANT" ]; then
           echo "sccache-${{ runner.os }}-${{ runner.arch }}-${VARIANT}-" >> "$GITHUB_OUTPUT"
+        else
+          echo "sccache-${{ runner.os }}-${{ runner.arch }}-" >> "$GITHUB_OUTPUT"
         fi
-        echo "sccache-${{ runner.os }}-${{ runner.arch }}-" >> "$GITHUB_OUTPUT"
         echo "EOF" >> "$GITHUB_OUTPUT"
       shell: bash
       working-directory: ${{ inputs.working-directory }}
