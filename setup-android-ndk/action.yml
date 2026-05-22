@@ -52,8 +52,7 @@ runs:
     - name: Delete pre-installed NDK versions
       run: |
         echo "Removing existing NDK installations..."
-        sdkmanager --list_installed
-        for v in $(sdkmanager --list_installed 2>/dev/null | grep '^  ndk;' | sed 's/^  ndk;//'); do
+        sdkmanager --list_installed 2>/dev/null | grep '^  ndk;' | sed 's/^  ndk;//;s/ |.*//' | while read -r v; do
           if [ "$v" = "${{ inputs.ndk-version }}" ]; then
             echo "Skipping ndk;$v (we'll install this version next)"
             continue
