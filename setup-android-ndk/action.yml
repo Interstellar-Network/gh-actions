@@ -2,10 +2,11 @@ name: "setup-android-ndk"
 description: "Install Android NDK and set up cross-compilation environment variables for Rust build targets."
 #
 # Depends on:
-#   - prepare_rust@ci-v5 (called before this action, for rustup)
+#   - prepare@ci-v5 or similar for ANDROID_SDK_ROOT
+#   - prepare_rust@ci-v5 (called before this action)
 #
 # After this action, the following env vars are set:
-#   ANDROID_SDK_ROOT, NDK_ROOT, CC_*, CXX_*, AR_*, CARGO_TARGET_*_LINKER for each target,
+#   NDK_ROOT, CC_*, CXX_*, AR_*, CARGO_TARGET_*_LINKER for each target,
 #   CMAKE_TOOLCHAIN_FILE, ANDROID_PLATFORM
 #
 # Usage (in a caller workflow):
@@ -41,71 +42,29 @@ runs:
     - run: rustup target add ${{ inputs.cargo-targets }}
       shell: bash
 
-    # Find or install sdkmanager, then install target NDK.
-    # We intentionally bypass android-actions/setup-android because it installs
-    # the emulator package (which has sporadic download failures) and we only
-    # need cmdline-tools + NDK for Rust cross-compilation.
-    - name: Setup sdkmanager and install NDK ${{ inputs.ndk-version }}
-      shell: bash
+    # Setup Android SDK and sdkmanager on the runner.
+    # This gives us ANDROID_SDK_ROOT and puts sdkmanager on PATH.
+    - uses: android-actions/setup-android@v4
+
+    ##############################################################################
+    # Remove any pre-installed NDK versions to avoid path conflicts.
+    # GitHub-hosted runners often include an old NDK that can cause warnings.
+    - name: Delete pre-installed NDK versions
       run: |
-        set -euo pipefail
-
-        # Ensure ANDROID_SDK_ROOT is set
-        ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$HOME/android-sdk}"
-        mkdir -p "$ANDROID_SDK_ROOT"
-        echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
-
-        # Find or download cmdline-tools
-        SDKMANAGER=""
-        # Check if sdkmanager is already on PATH
-        if command -v sdkmanager &>/dev/null; then
-          SDKMANAGER="sdkmanager"
-          echo "Found pre-installed sdkmanager"
-        # Check standard locations
-        elif [ -f "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
-          SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
-        elif [ -f "$ANDROID_SDK_ROOT/cmdline-tools/12.0/bin/sdkmanager" ]; then
-          SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/12.0/bin/sdkmanager"
-        elif [ -f "$ANDROID_SDK_ROOT/cmdline-tools/20.0/bin/sdkmanager" ]; then
-          SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/20.0/bin/sdkmanager"
-        elif [ -f /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager ]; then
-          SDKMANAGER=/usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager
-          ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
-        elif [ -f /usr/local/lib/android/sdk/cmdline-tools/12.0/bin/sdkmanager ]; then
-          SDKMANAGER=/usr/local/lib/android/sdk/cmdline-tools/12.0/bin/sdkmanager
-          ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
-        fi
-
-        if [ -z "$SDKMANAGER" ]; then
-          echo "sdkmanager not found, downloading cmdline-tools..."
-          CMDLINE_TOOLS_URL="https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
-          curl -fsSL "$CMDLINE_TOOLS_URL" -o /tmp/cmdline-tools.zip
-          unzip -q /tmp/cmdline-tools.zip -d /tmp/cmdline-tools-extracted
-          mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
-          mv /tmp/cmdline-tools-extracted/cmdline-tools "$ANDROID_SDK_ROOT/cmdline-tools/latest"
-          rm -rf /tmp/cmdline-tools.zip /tmp/cmdline-tools-extracted
-          SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
-        fi
-
-        # Add sdkmanager to PATH for subsequent steps
-        SDKMANAGER_DIR="$(dirname "$SDKMANAGER")"
-        echo "$SDKMANAGER_DIR" >> "$GITHUB_PATH"
-
-        # Accept licenses (non-interactive)
-        yes | "$SDKMANAGER" --licenses 2>/dev/null || true
-
-        # Remove any pre-installed NDK versions to avoid path conflicts
         echo "Removing existing NDK installations..."
-        "$SDKMANAGER" --list_installed 2>/dev/null | grep '^  ndk;' | sed 's/^  ndk;//' | while read -r v; do
+        sdkmanager --list_installed
+        for v in $(sdkmanager --list_installed 2>/dev/null | grep '^  ndk;' | sed 's/^  ndk;//'); do
           echo "Removing ndk;$v"
-          "$SDKMANAGER" --uninstall "ndk;$v" || true
+          sdkmanager --uninstall "ndk;$v" || true
         done
+      shell: bash
 
-        # Install target NDK (skipping emulator and other packages we don't need)
-        echo "Installing ndk;${{ inputs.ndk-version }}..."
-        "$SDKMANAGER" "ndk;${{ inputs.ndk-version }}"
+    # Install NDK (version MUST stay in sync with the other two locations):
+    #   Interstellar-Network/wallet-app-internal/shared/build.gradle.kts  (ndkVersion)
+    #   Interstellar-Network/gh-actions/setup-android-ndk/action.yml  (ndk-version default)
+    - name: Install NDK ${{ inputs.ndk-version }}
+      run: sdkmanager "ndk;${{ inputs.ndk-version }}"
+      shell: bash
 
     ##############################################################################
     # Set per-target environment variables for Rust cross-compilation.
@@ -113,7 +72,6 @@ runs:
     # All common Android targets are exported even if unused, so the same
     # action works across repos without per-target configuration.
     - name: Set NDK environment variables for Rust build targets
-      shell: bash
       run: |
         NDK_ROOT=$ANDROID_SDK_ROOT/ndk/${{ inputs.ndk-version }}
         API=${{ inputs.ndk-api-level }}
