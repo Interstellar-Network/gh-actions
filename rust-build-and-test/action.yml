@@ -153,6 +153,18 @@ runs:
       working-directory: ${{ inputs.working-directory }}
 
     ############################################################################
+    # Print stats BEFORE stopping the server. If we stop first, --show-stats
+    # auto-starts a fresh server with 0 stats, making the output useless.
+
+    - name: Print cache stats
+      if: always()
+      run: |
+        ccache --show-stats 2>/dev/null || echo "ccache not found!"
+        sccache --show-stats 2>/dev/null || echo "sccache not found!"
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+
+    ############################################################################
     # Cache save (always, even on failure). Since sccache has a SHA-based key
     # (unique per commit), the save always succeeds — no race with parallel jobs.
     # cargo key includes Cargo.lock + variant for matrix isolation.
@@ -199,14 +211,6 @@ runs:
         path: |
           ~/.cargo/registry/
           ~/.cargo/git/db/
-
-    - name: Print cache stats
-      if: always()
-      run: |
-        ccache --show-stats 2>/dev/null || echo "ccache not found!"
-        sccache --show-stats 2>/dev/null || echo "sccache not found!"
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
 
 
     # TODO cargo install; cargo fmt; cargo clippy?
