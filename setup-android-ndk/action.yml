@@ -26,7 +26,10 @@ inputs:
   ndk-version:
     description: "NDK version to install via sdkmanager"
     required: false
-    default: "25.2.9519653"
+    default: "28.0.13004108"
+    # MUST stay in sync with:
+    #   Interstellar-Network/wallet-app-internal/shared/build.gradle.kts  (ndkVersion)
+    #   Interstellar-Network/wallet-app-internal/.github/workflows/android.yml  (sdkmanager ndk;...)
   ndk-api-level:
     description: "Android API level for NDK toolchain targets"
     required: false
@@ -56,6 +59,9 @@ runs:
         done
       shell: bash
 
+    # Install NDK (version MUST stay in sync with the other two locations):
+    #   Interstellar-Network/wallet-app-internal/shared/build.gradle.kts  (ndkVersion)
+    #   Interstellar-Network/gh-actions/setup-android-ndk/action.yml  (ndk-version default)
     - name: Install NDK ${{ inputs.ndk-version }}
       run: sdkmanager "ndk;${{ inputs.ndk-version }}"
       shell: bash
