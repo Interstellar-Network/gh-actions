@@ -18,6 +18,10 @@ inputs:
     description: "args passed to cargo fmt"
     required: false
     default: "-- -D warnings"
+  save_cache:
+    description: "Whether to save cache at end. Set \"false\" for intermediate calls in consolidated jobs (only the last should save)."
+    required: false
+    default: "true"
 
 runs:
   using: "composite"
@@ -128,7 +132,7 @@ runs:
     # Zero stats after restore so the final stats reflect only this run.
 
     - name: Zero sccache/ccache stats after restore
-      if: always()
+      if: always() && inputs.save_cache == 'true'
       run: |
         sccache --zero-stats 2>/dev/null || true
         ccache --zero-stats 2>/dev/null || true
@@ -136,15 +140,18 @@ runs:
       working-directory: ${{ inputs.working-directory }}
 
     ############################################################################
-    # Lint
+    # Lint — each step runs only when its args input is non-empty.
+    # Set fmt_args="" or clippy_args="" to skip the respective step.
 
     - name: Run cargo fmt
+      if: ${{ inputs.fmt_args != '' }}
       run: cargo fmt ${{ inputs.fmt_args }}
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
     # NOTE: cargo check: clippy internally runs "cargo check" so no point in doing it manually
     - name: Run cargo clippy
+      if: ${{ inputs.clippy_args != '' }}
       run: cargo clippy ${{ inputs.clippy_args }}
       shell: bash
       working-directory: ${{ inputs.working-directory }}
@@ -154,7 +161,7 @@ runs:
     # (unique per commit), the save always succeeds — no race with parallel jobs.
 
     - name: Print cache stats
-      if: always()
+      if: always() && inputs.save_cache == 'true'
       run: |
         ccache --show-stats 2>/dev/null || echo "ccache not found!"
         sccache --show-stats 2>/dev/null || echo "sccache not found!"
@@ -162,33 +169,33 @@ runs:
       working-directory: ${{ inputs.working-directory }}
 
     - name: Stop sccache server before saving
-      if: always()
+      if: always() && inputs.save_cache == 'true'
       run: sccache --stop-server 2>/dev/null || true
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
     - name: Export cache keys for save
       id: export-keys
-      if: always()
+      if: always() && inputs.save_cache == 'true'
       run: |
         echo "sccache-key=${{ steps.sccache-config.outputs.key }}" >> "$GITHUB_OUTPUT"
         echo "cargo-key=${{ steps.cargo-config.outputs.key }}" >> "$GITHUB_OUTPUT"
       shell: bash
       working-directory: ${{ inputs.working-directory }}
     - uses: actions/cache/save@v5
-      if: always() && steps.export-keys.outputs.sccache-key != '' && steps.resolve-provider.outputs.provider != 'warp'
+      if: always() && inputs.save_cache == 'true' && steps.export-keys.outputs.sccache-key != '' && steps.resolve-provider.outputs.provider != 'warp'
       with:
         key: ${{ steps.export-keys.outputs.sccache-key }}
         path: ~/.cache/sccache
 
     - uses: WarpBuilds/cache/save@v1
-      if: always() && steps.export-keys.outputs.sccache-key != '' && steps.resolve-provider.outputs.provider == 'warp'
+      if: always() && inputs.save_cache == 'true' && steps.export-keys.outputs.sccache-key != '' && steps.resolve-provider.outputs.provider == 'warp'
       with:
         key: ${{ steps.export-keys.outputs.sccache-key }}
         path: ~/.cache/sccache
 
     - uses: actions/cache/save@v5
-      if: always() && steps.export-keys.outputs.cargo-key != '' && steps.resolve-provider.outputs.provider != 'warp'
+      if: always() && inputs.save_cache == 'true' && steps.export-keys.outputs.cargo-key != '' && steps.resolve-provider.outputs.provider != 'warp'
       with:
         key: ${{ steps.export-keys.outputs.cargo-key }}
         path: |
@@ -196,7 +203,7 @@ runs:
           ~/.cargo/git/db/
 
     - uses: WarpBuilds/cache/save@v1
-      if: always() && steps.export-keys.outputs.cargo-key != '' && steps.resolve-provider.outputs.provider == 'warp'
+      if: always() && inputs.save_cache == 'true' && steps.export-keys.outputs.cargo-key != '' && steps.resolve-provider.outputs.provider == 'warp'
       with:
         key: ${{ steps.export-keys.outputs.cargo-key }}
         path: |
