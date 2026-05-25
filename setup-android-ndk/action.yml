@@ -47,9 +47,57 @@ runs:
     - uses: android-actions/setup-android@v4
 
     ##############################################################################
+    # NDK is ~1.5 GB and takes ~30 s to download + unzip. Cache it across runs
+    # to avoid transient download failures ("Error reading Zip content from a
+    # SeekableByteChannel") and to speed up CI.
+    #
+    # Cache key uses ndk-version input (not hardcoded) so it auto-adjusts when
+    # the version is bumped.
+
+    - name: Resolve cache provider and NDK path
+      id: resolve-provider
+      run: |
+        PROVIDER="${CACHE_BACKEND:-github}"
+        echo "provider=$PROVIDER" >> "$GITHUB_OUTPUT"
+        echo "ndk-path=$ANDROID_SDK_ROOT/ndk/${{ inputs.ndk-version }}" >> "$GITHUB_OUTPUT"
+      shell: bash
+
+    - name: NDK cache restore (GitHub)
+      id: restore-ndk-github
+      if: steps.resolve-provider.outputs.provider != 'warp'
+      uses: actions/cache/restore@v5
+      with:
+        path: ${{ steps.resolve-provider.outputs.ndk-path }}
+        key: ndk-${{ runner.os }}-${{ inputs.ndk-version }}
+        restore-keys: ndk-${{ runner.os }}-${{ inputs.ndk-version }}-
+
+    - name: NDK cache restore (WarpBuilds)
+      id: restore-ndk-warp
+      if: steps.resolve-provider.outputs.provider == 'warp'
+      uses: WarpBuilds/cache/restore@v1
+      with:
+        path: ${{ steps.resolve-provider.outputs.ndk-path }}
+        key: ndk-${{ runner.os }}-${{ inputs.ndk-version }}
+        restore-keys: ndk-${{ runner.os }}-${{ inputs.ndk-version }}-
+
+    - name: Consolidate NDK cache hit flag
+      id: ndk-cache
+      run: |
+        GITHUB_HIT="${{ steps.restore-ndk-github.outputs.cache-hit }}"
+        WARP_HIT="${{ steps.restore-ndk-warp.outputs.cache-hit }}"
+        if [ "$GITHUB_HIT" = "true" ] || [ "$WARP_HIT" = "true" ]; then
+          echo "cache-hit=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "cache-hit=false" >> "$GITHUB_OUTPUT"
+        fi
+      shell: bash
+
+    ##############################################################################
     # Remove any pre-installed NDK versions to avoid path conflicts.
     # GitHub-hosted runners often include an old NDK that can cause warnings.
+    # Skipped on cache hit (NDK already on disk).
     - name: Delete pre-installed NDK versions
+      if: steps.ndk-cache.outputs.cache-hit != 'true'
       run: |
         echo "Removing existing NDK installations..."
         sdkmanager --list_installed 2>/dev/null | grep '^  ndk;' | sed 's/^  ndk;//;s/ |.*//' | while read -r v; do
@@ -65,9 +113,27 @@ runs:
     # Install NDK (version MUST stay in sync with the other two locations):
     #   Interstellar-Network/wallet-app-internal/shared/build.gradle.kts  (ndkVersion)
     #   Interstellar-Network/gh-actions/setup-android-ndk/action.yml  (ndk-version default)
+    # Skipped on cache hit.
     - name: Install NDK ${{ inputs.ndk-version }}
+      if: steps.ndk-cache.outputs.cache-hit != 'true'
       run: sdkmanager "ndk;${{ inputs.ndk-version }}"
       shell: bash
+
+    ##############################################################################
+    # Save NDK cache for next run (only on cache miss).
+    - name: NDK cache save (GitHub)
+      if: steps.ndk-cache.outputs.cache-hit != 'true' && steps.resolve-provider.outputs.provider != 'warp'
+      uses: actions/cache/save@v5
+      with:
+        path: ${{ steps.resolve-provider.outputs.ndk-path }}
+        key: ndk-${{ runner.os }}-${{ inputs.ndk-version }}
+
+    - name: NDK cache save (WarpBuilds)
+      if: steps.ndk-cache.outputs.cache-hit != 'true' && steps.resolve-provider.outputs.provider == 'warp'
+      uses: WarpBuilds/cache/save@v1
+      with:
+        path: ${{ steps.resolve-provider.outputs.ndk-path }}
+        key: ndk-${{ runner.os }}-${{ inputs.ndk-version }}
 
     ##############################################################################
     # Set per-target environment variables for Rust cross-compilation.
