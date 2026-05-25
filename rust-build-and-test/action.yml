@@ -23,6 +23,14 @@ inputs:
     description: "Optional custom script. When non-empty, replaces the default cargo test --no-run and cargo test run steps. Cache restore/save and stats still happen. Useful for non-standard build scenarios like cross-compilation or custom test commands."
     required: false
     default: ""
+  restore_cache:
+    description: "Whether to restore cache. Set \"false\" for intermediate calls in consolidated jobs (the first call already populated disk)."
+    required: false
+    default: "true"
+  save_cache:
+    description: "Whether to save cache at end. Set \"false\" for intermediate calls in consolidated jobs (only the last should save)."
+    required: false
+    default: "true"
 
 runs:
   using: "composite"
@@ -68,7 +76,7 @@ runs:
 
     - name: sccache restore (GitHub)
       id: restore-sccache-github
-      if: steps.resolve-provider.outputs.provider != 'warp'
+      if: inputs.restore_cache == 'true' && steps.resolve-provider.outputs.provider != 'warp'
       uses: actions/cache/restore@v5
       with:
         path: ${{ steps.sccache-config.outputs.path }}
@@ -77,7 +85,7 @@ runs:
 
     - name: sccache restore (WarpBuilds)
       id: restore-sccache-warp
-      if: steps.resolve-provider.outputs.provider == 'warp'
+      if: inputs.restore_cache == 'true' && steps.resolve-provider.outputs.provider == 'warp'
       uses: WarpBuilds/cache/restore@v1
       with:
         path: ${{ steps.sccache-config.outputs.path }}
@@ -117,7 +125,7 @@ runs:
 
     - name: cargo restore (GitHub)
       id: restore-cargo-github
-      if: steps.resolve-provider.outputs.provider != 'warp'
+      if: inputs.restore_cache == 'true' && steps.resolve-provider.outputs.provider != 'warp'
       uses: actions/cache/restore@v5
       with:
         path: ${{ steps.cargo-config.outputs.path }}
@@ -126,7 +134,7 @@ runs:
 
     - name: cargo restore (WarpBuilds)
       id: restore-cargo-warp
-      if: steps.resolve-provider.outputs.provider == 'warp'
+      if: inputs.restore_cache == 'true' && steps.resolve-provider.outputs.provider == 'warp'
       uses: WarpBuilds/cache/restore@v1
       with:
         path: ${{ steps.cargo-config.outputs.path }}
@@ -137,7 +145,7 @@ runs:
     # Zero stats after restore so the final stats reflect only this run.
 
     - name: Zero sccache/ccache stats after restore
-      if: always()
+      if: always() && inputs.save_cache == 'true'
       run: |
         sccache --zero-stats 2>/dev/null || true
         ccache --zero-stats 2>/dev/null || true
@@ -171,7 +179,7 @@ runs:
     # auto-starts a fresh server with 0 stats, making the output useless.
 
     - name: Print cache stats
-      if: always()
+      if: always() && inputs.save_cache == 'true'
       run: |
         ccache --show-stats 2>/dev/null || echo "ccache not found!"
         sccache --show-stats 2>/dev/null || echo "sccache not found!"
@@ -184,14 +192,14 @@ runs:
     # cargo key includes Cargo.lock + variant for matrix isolation.
 
     - name: Stop sccache server before saving
-      if: always()
+      if: always() && inputs.save_cache == 'true'
       run: sccache --stop-server 2>/dev/null || true
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
     - name: Export cache keys for save
       id: export-keys
-      if: always()
+      if: always() && inputs.save_cache == 'true'
       run: |
         echo "sccache-key=${{ steps.sccache-config.outputs.key }}" >> "$GITHUB_OUTPUT"
         echo "cargo-key=${{ steps.cargo-config.outputs.key }}" >> "$GITHUB_OUTPUT"
@@ -199,19 +207,19 @@ runs:
       working-directory: ${{ inputs.working-directory }}
 
     - uses: actions/cache/save@v5
-      if: always() && steps.export-keys.outputs.sccache-key != '' && steps.resolve-provider.outputs.provider != 'warp'
+      if: always() && inputs.save_cache == 'true' && steps.export-keys.outputs.sccache-key != '' && steps.resolve-provider.outputs.provider != 'warp'
       with:
         key: ${{ steps.export-keys.outputs.sccache-key }}
         path: ~/.cache/sccache
 
     - uses: WarpBuilds/cache/save@v1
-      if: always() && steps.export-keys.outputs.sccache-key != '' && steps.resolve-provider.outputs.provider == 'warp'
+      if: always() && inputs.save_cache == 'true' && steps.export-keys.outputs.sccache-key != '' && steps.resolve-provider.outputs.provider == 'warp'
       with:
         key: ${{ steps.export-keys.outputs.sccache-key }}
         path: ~/.cache/sccache
 
     - uses: actions/cache/save@v5
-      if: always() && steps.export-keys.outputs.cargo-key != '' && steps.resolve-provider.outputs.provider != 'warp'
+      if: always() && inputs.save_cache == 'true' && steps.export-keys.outputs.cargo-key != '' && steps.resolve-provider.outputs.provider != 'warp'
       with:
         key: ${{ steps.export-keys.outputs.cargo-key }}
         path: |
@@ -219,7 +227,7 @@ runs:
           ~/.cargo/git/db/
 
     - uses: WarpBuilds/cache/save@v1
-      if: always() && steps.export-keys.outputs.cargo-key != '' && steps.resolve-provider.outputs.provider == 'warp'
+      if: always() && inputs.save_cache == 'true' && steps.export-keys.outputs.cargo-key != '' && steps.resolve-provider.outputs.provider == 'warp'
       with:
         key: ${{ steps.export-keys.outputs.cargo-key }}
         path: |
