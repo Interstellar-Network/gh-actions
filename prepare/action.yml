@@ -42,9 +42,9 @@ inputs:
     required: false
     default: "github"
   gcc_version:
-    description: "GCC version to install (e.g. '11', '16'). Defaults to latest."
+    description: "GCC version to install (e.g. '11', '14'). Defaults to latest available on Ubuntu 24.04."
     required: false
-    default: "16"
+    default: "14"
   ccache_version:
     description: "ccache version to install"
     required: false
