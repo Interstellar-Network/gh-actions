@@ -37,16 +37,28 @@ inputs:
     description: "Install ccache"
     required: false
     default: "true"
-  install_conan:
-    description: "Install Conan"
+  cache-provider:
+    description: "Cache backend for downstream save actions. Exported as CACHE_BACKEND env var so build actions auto-detect. Use 'warp' for WarpBuilds/cache or 'github' (default) for standard actions/cache."
     required: false
-    default: "false"
+    default: "github"
+  gcc_version:
+    description: "GCC version to install (e.g. '11', '13'). Defaults to 13 (available on both Ubuntu 22.04 and 24.04)."
+    required: false
+    default: "13"
+  ccache_version:
+    description: "ccache version to install"
+    required: false
+    default: "4.13.6"
+  mold_version:
+    description: "mold linker version to install"
+    required: false
+    default: "2.41.0"
 
 runs:
   using: "composite"
   steps:
     # https://github.com/actions/checkout
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
       with:
         # recursive needed for api_circuits/api_garble b/c they have lib_circuits/lib_garble as deps, and those contains submodules
         submodules: "recursive"
@@ -54,7 +66,7 @@ runs:
         # token: ${{ inputs.interstellar_token_ci }}
         ssh-key: ${{ inputs.ssh_key_input }}
 
-    - uses: webfactory/ssh-agent@v0.9.0
+    - uses: webfactory/ssh-agent@v0.10.0
       with:
           ssh-private-key: ${{ inputs.ssh_key_input }}
 
@@ -68,44 +80,35 @@ runs:
     # install a recent compiler
     # NOTE: it MAY already be done eg when using "container: image: ghcr.io/interstellar-network/ci-images/ci-base-cpp:latest"
     # WARNING if you update eg Clang<->GCC, or its version;
-    # - you MUST also update "conan profile" calls below in this file
     # - you must make sure "check-compiler-exists" job paths/version match with job "Install compiler"
 
     - name: Check compiler
+      if: ${{ inputs.gcc_version != '' }}
       id: check-compiler-exists
       run: |
-        echo "compiler-exists=$(command -v g++-11 &> /dev/null && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
+        echo "compiler-exists=$(command -v g++-${{ inputs.gcc_version }} &> /dev/null && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
       shell: bash
 
-    # WARNING: if you update
     - name: Install compiler
-      if: (!fromJSON(steps.check-compiler-exists.outputs.compiler-exists))
-      # cf /ci-images/ci-base-cpp.dockerfile
-      # "build-essential would work too, but:
-      # - install gcc 9 instead of 10
-      # - also dep on make, and dpkg-XXX
+      if: ${{ inputs.gcc_version != '' && !fromJSON(steps.check-compiler-exists.outputs.compiler-exists) }}
       # NOTE: g++ dep on gcc-N so this is fine, also libc-dev and libstdc++-10-dev"
       run: |
-        sudo apt-get update && sudo apt-get install -y --no-install-recommends g++-11
+        sudo apt-get update && sudo apt-get install -y --no-install-recommends g++-${{ inputs.gcc_version }} || echo "g++-${{ inputs.gcc_version }} not available in apt repos"
       shell: bash
 
-    # DO NOT use eg "if: (!fromJSON(steps.check-compiler-exists.outputs.compiler-exists))"
-    # b/c on GH's "ubuntu-latest" VM g++-11 is already installed and the default anyway
-    # which is what CMake would use
-    # TODO? is it better to use env vars CC/CXX?
     - name: Make the new compiler the default
-      # cf /ci-images/ci-base-cpp.dockerfile
-      # "build-essential would work too, but:
-      # - install gcc 9 instead of 10
-      # - also dep on make, and dpkg-XXX
-      # NOTE: g++ dep on gcc-N so this is fine, also libc-dev and libstdc++-10-dev"
+      if: ${{ inputs.gcc_version != '' }}
       run: |
-        sudo update-alternatives --install /usr/bin/cc cc /usr/bin/gcc-11 100
-        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 100
-        sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 100
-        cc --version
-        gcc --version
-        g++ --version
+        if command -v gcc-${{ inputs.gcc_version }} &> /dev/null; then
+          sudo update-alternatives --install /usr/bin/cc cc /usr/bin/gcc-${{ inputs.gcc_version }} 100
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${{ inputs.gcc_version }} 100
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-${{ inputs.gcc_version }} 100
+          cc --version
+          gcc --version
+          g++ --version
+        else
+          echo "gcc-${{ inputs.gcc_version }} not installed (not available on this OS version). Using system default."
+        fi
       shell: bash
 
     ############################################################################
@@ -158,13 +161,11 @@ runs:
       run: |
         mkdir /tmp/ccache
         cd /tmp/ccache
-        wget -O ccache.tar.xz https://github.com/ccache/ccache/releases/download/v${CCACHE_VERSION}/ccache-${CCACHE_VERSION}-linux-x86_64.tar.xz
+        wget -O ccache.tar.xz https://github.com/ccache/ccache/releases/download/v${{ inputs.ccache_version }}/ccache-${{ inputs.ccache_version }}-linux-x86_64-glibc.tar.xz
         tar -xf ccache.tar.xz --strip-components=1
         chmod +x ccache
         sudo mv ccache /usr/local/bin/ccache
         ccache --show-config
-      env:
-        CCACHE_VERSION: 4.7.4
       shell: bash
 
     # https://cmake.org/cmake/help/latest/variable/CMAKE_LANG_COMPILER_LAUNCHER.html#variable:CMAKE_%3CLANG%3E_COMPILER_LAUNCHER
@@ -185,124 +186,16 @@ runs:
         g++ --version
       shell: bash
 
-    # write a kind of compiler_id for the cache key at the next step
-    - name: Set C++ compilerid
-      id: set-cpp-compilerid
+    # Export cache backend choice so downstream save actions can select the right backend.
+    # Cache restore is now handled by each build action (cmake-build-and-test, etc.)
+    # so it has access to its own compiler version and can compute the key internally.
+    # This env var is the only cache-related information passed between actions.
+    - name: Export cache backend
       run: |
-        echo "cpp-compilerid=$(realpath /usr/bin/cc)-$(cc -dumpversion)" >> $GITHUB_OUTPUT
-      shell: bash
-
-    # IMPORTANT: DO NOT call this multiple time on the same host! cf "name: sccache"
-    - name: ccache
-      id: cache-ccache
-      if: fromJSON(inputs.install_ccache)
-      # using a fork that uploads even in case of failure
-      # really useful for *_circuits b/c if a test fail after 20+mins of compilation it is wasteful to discard the compilation
-      # uses: actions/cache@v3
-      uses: pat-s/always-upload-cache@v3
-      with:
-        # cache_dir = /home/runner/.cache/ccache
-        path: ~/.cache/ccache
-        # IMPORTANT: by default on a cache hit we get at restore time:
-        # "Cache restored successfully"
-        # "Cache restored from key: cache-Linux-/usr/bin/x86_64-linux-gnu-gcc-9-9"
-        # and in post job:
-        # "Cache hit occurred on the primary key cache-Linux-/usr/bin/x86_64-linux-gnu-gcc-9-9, not saving cache."
-        # b/c of isExactKeyMatch at https://github.com/actions/cache/blob/main/src/save.ts#L36
-        # Which means the cache is NOT updated; which is NOT AT ALL what we want.
-        # cf https://github.com/actions/cache/issues/171
-        # and https://github.com/actions/cache/issues/109
-        # So we SHOULD for last part of the key use something that changes at every job.
-        #
-        # NOTE: DO NOT use ${{ github.sha }}?
-        # Unable to reserve cache with key cache-Linux-/usr/bin/x86_64-linux-gnu-gcc-9-9-4b28f96a1993312ede7d10fe6ad0d4bc3251e0ad, another job may be creating this cache. More details: Cache already exists. Scope: refs/heads/add-ci, Key: cache-Linux-/usr/bin/x86_64-linux-gnu-gcc-9-9-4b28f96a1993312ede7d10fe6ad0d4bc3251e0ad, Version: b97fbe098767aae2aa5efb5d4f8da4e488678a6aaf72931965bfb19f3ef9e00a
-        key: cache-${{ runner.os }}-${{ steps.set-cpp-compilerid.outputs.cpp-compilerid }}-${{ github.sha }}
-        restore-keys: cache-${{ runner.os }}-${{ steps.set-cpp-compilerid.outputs.cpp-compilerid }}-
-
-    # MUST be after actions/cache@v3 else the stats are already empty
-    - name: Reset ccache stats
-      if: fromJSON(inputs.install_ccache)
-      run: |
-        ccache --zero
+        echo "CACHE_BACKEND=${{ inputs.cache-provider }}" >> "$GITHUB_ENV"
       shell: bash
 
     ############################################################################
-
-    - name: Check if conan already in PATH
-      if: fromJSON(inputs.install_ccache)
-      id: check-conan-exists
-      run: |
-        echo "conan-exists=$(command -v conan &> /dev/null && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
-      shell: bash
-
-    - name: Install Conan from deb
-      if: fromJSON(inputs.install_conan) && !fromJSON(steps.check-conan-exists.outputs.conan-exists)
-      run: |
-        wget https://github.com/conan-io/conan/releases/latest/download/conan-ubuntu-64.deb -O /tmp/conan.deb
-        sudo apt-get install -y /tmp/conan.deb
-        rm /tmp/conan.deb
-      shell: bash
-
-    - name: Conan config
-      if: fromJSON(inputs.install_conan)
-      # without this:
-      #       ERROR: Not able to automatically detect '/usr/bin/cc' version
-      # WARN: Remotes registry file missing, creating default one in /home/runner/.conan/remotes.json
-      # ERROR: abseil/20211102.0: 'settings.compiler' value not defined
-      # CMake Error at build/conan.cmake:651 (message):
-      # NOTE: the version does NOT really matter, eg gcc 9 or gcc 10 would work b/c it would still download binaries
-      # but gcc vs clang DOES matter: if using clang here it would say "no bin available" and would try to compile instead...
-      # without version: that step would say "Found clang 13.0"
-      # and then at CMake step we get:
-      #   ERROR: Invalid setting '13' is not a valid 'settings.compiler.version' value.
-      #   Possible values are ['4.1', '4.4', '4.5', '4.6', '4.7', '4.8', '4.9', '5', '5.1', '5.2', '5.3', '5.4', '5.5', '6', '6.1', '6.2', '6.3', '6.4', '6.5', '7', '7.1', '7.2', '7.3', '7.4', '7.5', '8', '8.1', '8.2', '8.3', '8.4', '9', '9.1', '9.2', '9.3', '10', '10.1', '10.2', '10.3', '11', '11.1', '11.2', '12']
-      #
-      # IMPORTANT: to avoid
-      #  CMake Error at conanbuildinfo.cmake:403 (message):
-      # Detected a mismatch for the compiler version between your conan profile
-      # settings and CMake:
-      # Compiler version specified in your conan profile: 9
-      # Compiler version detected in CMake: 10.3
-      # compiler.version SHOULD match the one used as CC/CXX
-      run: |
-        conan profile new default --detect
-        conan profile update settings.compiler=gcc default
-        conan profile update settings.compiler.version=10 default
-        conan profile update settings.compiler.libcxx=libstdc++11 default
-      shell: bash
-
-    # cache /home/runner/.conan/XXX(only the packages?)
-    # cf also [CONAN CACHE CLEANUP]
-    # or https://github.com/conan-io/conan/pull/6287 ? https://github.com/conan-io/docs/blob/develop/configuration/download_cache.rst
-    - name: conan cache
-      id: cache-conan
-      if: fromJSON(inputs.install_conan)
-      # using a fork that uploads even in case of failure
-      # really useful for *_circuits b/c if a test fail after 20+mins of compilation it is wasteful to discard the compilation
-      # uses: actions/cache@v3
-      uses: pat-s/always-upload-cache@v3
-      with:
-        # DO NOT cache the profile else it messes with "conan profile update" above
-        path: |
-          ~/.conan/
-          !~/.conan/profiles/default
-        # IMPORTANT: by default on a cache hit we get at restore time:
-        # "Cache restored successfully"
-        # "Cache restored from key: cache-Linux-/usr/bin/x86_64-linux-gnu-gcc-9-9"
-        # and in post job:
-        # "Cache hit occurred on the primary key cache-Linux-/usr/bin/x86_64-linux-gnu-gcc-9-9, not saving cache."
-        # b/c of isExactKeyMatch at https://github.com/actions/cache/blob/main/src/save.ts#L36
-        # Which means the cache is NOT updated; which is NOT AT ALL what we want.
-        # cf https://github.com/actions/cache/issues/171
-        # and https://github.com/actions/cache/issues/109
-        # So we SHOULD for last part of the key use something that changes at every job.
-        #
-        # NOTE: DO NOT use ${{ github.sha }}?
-        # Unable to reserve cache with key cache-Linux-/usr/bin/x86_64-linux-gnu-gcc-9-9-4b28f96a1993312ede7d10fe6ad0d4bc3251e0ad, another job may be creating this cache. More details: Cache already exists. Scope: refs/heads/add-ci, Key: cache-Linux-/usr/bin/x86_64-linux-gnu-gcc-9-9-4b28f96a1993312ede7d10fe6ad0d4bc3251e0ad, Version: b97fbe098767aae2aa5efb5d4f8da4e488678a6aaf72931965bfb19f3ef9e00a
-        key: conan-${{ runner.os }}-${{ github.sha }}
-        restore-keys: conan-${{ runner.os }}-
-
-    ############################################################################$
 
     - name: Check mold(linker) exists
       id: check-mold-exists
@@ -315,10 +208,8 @@ runs:
     - name: Install mold(linker)
       if: (!fromJSON(steps.check-mold-exists.outputs.mold-exists))
       run: |
-        wget -O- https://github.com/rui314/mold/releases/download/v$MOLD_VERSION/mold-$MOLD_VERSION-$(uname -m)-linux.tar.gz | sudo tar -C /usr/local --strip-components=1 -xzf -
+        wget -O- https://github.com/rui314/mold/releases/download/v${{ inputs.mold_version }}/mold-${{ inputs.mold_version }}-$(uname -m)-linux.tar.gz | sudo tar -C /usr/local --strip-components=1 -xzf -
         sudo chmod +x /usr/local/bin/mold
-      env:
-        MOLD_VERSION: 2.37.0
       shell: bash
 
     # DO NOT use eg "if: (!fromJSON(steps.check-mold-exists.outputs.mold-exists))"

@@ -1,0 +1,170 @@
+name: "setup-android-ndk"
+description: "Install Android NDK and set up cross-compilation environment variables for Rust build targets."
+#
+# Depends on:
+#   - prepare@ci-v5 or similar for ANDROID_SDK_ROOT
+#   - prepare_rust@ci-v5 (called before this action)
+#
+# After this action, the following env vars are set:
+#   NDK_ROOT, CC_*, CXX_*, AR_*, CARGO_TARGET_*_LINKER for each target,
+#   CMAKE_TOOLCHAIN_FILE, ANDROID_PLATFORM
+#
+# Usage (in a caller workflow):
+#   - uses: Interstellar-Network/gh-actions/setup-android-ndk@ci-v5
+#     with:
+#       cargo-targets: "aarch64-linux-android armv7-linux-androideabi"
+#
+# Then call rust-build-and-test@ci-v5 with run: for the actual cargo build:
+#   - uses: Interstellar-Network/gh-actions/rust-build-and-test@ci-v5
+#     with:
+#       run: cargo build --verbose --target=aarch64-linux-android
+
+inputs:
+  cargo-targets:
+    description: "Space-separated list of Rust target triples to add via rustup target add (e.g. 'aarch64-linux-android armv7-linux-androideabi x86_64-linux-android')"
+    required: true
+  ndk-version:
+    description: "NDK version to install via sdkmanager"
+    required: true
+    # MUST stay in sync with:
+    #   Interstellar-Network/wallet-app-internal/shared/build.gradle.kts  (ndkVersion)
+    #   Interstellar-Network/wallet-app-internal/.github/workflows/android.yml  (sdkmanager ndk;...)
+  ndk-api-level:
+    description: "Android API level for NDK toolchain targets"
+    required: false
+    default: "33"
+
+runs:
+  using: "composite"
+  steps:
+    ##############################################################################
+    - run: rustup target add ${{ inputs.cargo-targets }}
+      shell: bash
+
+    # Setup Android SDK and sdkmanager on the runner.
+    # This gives us ANDROID_SDK_ROOT and puts sdkmanager on PATH.
+    - uses: android-actions/setup-android@v4
+
+    ##############################################################################
+    # NDK is ~1.5 GB and takes ~30 s to download + unzip. Cache it across runs
+    # to avoid transient download failures ("Error reading Zip content from a
+    # SeekableByteChannel") and to speed up CI.
+    #
+    # Cache key uses ndk-version input (not hardcoded) so it auto-adjusts when
+    # the version is bumped.
+
+    - name: Resolve cache provider and NDK path
+      id: resolve-provider
+      run: |
+        PROVIDER="${CACHE_BACKEND:-github}"
+        echo "provider=$PROVIDER" >> "$GITHUB_OUTPUT"
+        echo "ndk-path=$ANDROID_SDK_ROOT/ndk/${{ inputs.ndk-version }}" >> "$GITHUB_OUTPUT"
+      shell: bash
+
+    - name: NDK cache restore (GitHub)
+      id: restore-ndk-github
+      if: steps.resolve-provider.outputs.provider != 'warp'
+      uses: actions/cache/restore@v5
+      with:
+        path: ${{ steps.resolve-provider.outputs.ndk-path }}
+        key: ndk-${{ runner.os }}-${{ inputs.ndk-version }}
+        restore-keys: ndk-${{ runner.os }}-${{ inputs.ndk-version }}-
+
+    - name: NDK cache restore (WarpBuilds)
+      id: restore-ndk-warp
+      if: steps.resolve-provider.outputs.provider == 'warp'
+      uses: WarpBuilds/cache/restore@v1
+      with:
+        path: ${{ steps.resolve-provider.outputs.ndk-path }}
+        key: ndk-${{ runner.os }}-${{ inputs.ndk-version }}
+        restore-keys: ndk-${{ runner.os }}-${{ inputs.ndk-version }}-
+
+    - name: Consolidate NDK cache hit flag
+      id: ndk-cache
+      run: |
+        GITHUB_HIT="${{ steps.restore-ndk-github.outputs.cache-hit }}"
+        WARP_HIT="${{ steps.restore-ndk-warp.outputs.cache-hit }}"
+        if [ "$GITHUB_HIT" = "true" ] || [ "$WARP_HIT" = "true" ]; then
+          echo "cache-hit=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "cache-hit=false" >> "$GITHUB_OUTPUT"
+        fi
+      shell: bash
+
+    ##############################################################################
+    # Remove any pre-installed NDK versions to avoid path conflicts.
+    # GitHub-hosted runners often include an old NDK that can cause warnings.
+    # Skipped on cache hit (NDK already on disk).
+    - name: Delete pre-installed NDK versions
+      if: steps.ndk-cache.outputs.cache-hit != 'true'
+      run: |
+        echo "Removing existing NDK installations..."
+        sdkmanager --list_installed 2>/dev/null | grep '^  ndk;' | sed 's/^  ndk;//;s/ |.*//' | while read -r v; do
+          if [ "$v" = "${{ inputs.ndk-version }}" ]; then
+            echo "Skipping ndk;$v (we'll install this version next)"
+            continue
+          fi
+          echo "Removing ndk;$v"
+          sdkmanager --uninstall "ndk;$v" || true
+        done
+      shell: bash
+
+    # Install NDK (version MUST stay in sync with the other two locations):
+    #   Interstellar-Network/wallet-app-internal/shared/build.gradle.kts  (ndkVersion)
+    #   Interstellar-Network/gh-actions/setup-android-ndk/action.yml  (ndk-version default)
+    # Skipped on cache hit.
+    - name: Install NDK ${{ inputs.ndk-version }}
+      if: steps.ndk-cache.outputs.cache-hit != 'true'
+      run: sdkmanager "ndk;${{ inputs.ndk-version }}"
+      shell: bash
+
+    ##############################################################################
+    # Save NDK cache for next run (only on cache miss).
+    - name: NDK cache save (GitHub)
+      if: steps.ndk-cache.outputs.cache-hit != 'true' && steps.resolve-provider.outputs.provider != 'warp'
+      uses: actions/cache/save@v5
+      with:
+        path: ${{ steps.resolve-provider.outputs.ndk-path }}
+        key: ndk-${{ runner.os }}-${{ inputs.ndk-version }}
+
+    - name: NDK cache save (WarpBuilds)
+      if: steps.ndk-cache.outputs.cache-hit != 'true' && steps.resolve-provider.outputs.provider == 'warp'
+      uses: WarpBuilds/cache/save@v1
+      with:
+        path: ${{ steps.resolve-provider.outputs.ndk-path }}
+        key: ndk-${{ runner.os }}-${{ inputs.ndk-version }}
+
+    ##############################################################################
+    # Set per-target environment variables for Rust cross-compilation.
+    # These are consumed by cargo's build scripts and the linker resolution.
+    # All common Android targets are exported even if unused, so the same
+    # action works across repos without per-target configuration.
+    - name: Set NDK environment variables for Rust build targets
+      run: |
+        NDK_ROOT=$ANDROID_SDK_ROOT/ndk/${{ inputs.ndk-version }}
+        API=${{ inputs.ndk-api-level }}
+        TOOLCHAIN=$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64
+
+        echo "NDK_ROOT=$NDK_ROOT" >> $GITHUB_ENV
+
+        # armv7-linux-androideabi
+        echo "CC_armv7_linux_androideabi=$TOOLCHAIN/bin/armv7a-linux-androideabi${API}-clang" >> $GITHUB_ENV
+        echo "AR_armv7_linux_androideabi=$TOOLCHAIN/bin/llvm-ar" >> $GITHUB_ENV
+        echo "CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER=$TOOLCHAIN/bin/armv7a-linux-androideabi${API}-clang" >> $GITHUB_ENV
+
+        # aarch64-linux-android
+        echo "CC_aarch64_linux_android=$TOOLCHAIN/bin/aarch64-linux-android${API}-clang" >> $GITHUB_ENV
+        echo "CXX_aarch64_linux_android=$TOOLCHAIN/bin/aarch64-linux-android${API}-clang++" >> $GITHUB_ENV
+        echo "AR_aarch64_linux_android=$TOOLCHAIN/bin/llvm-ar" >> $GITHUB_ENV
+        echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$TOOLCHAIN/bin/aarch64-linux-android${API}-clang" >> $GITHUB_ENV
+
+        # x86_64-linux-android (used by wallet-app)
+        echo "CC_x86_64_linux_android=$TOOLCHAIN/bin/x86_64-linux-android${API}-clang" >> $GITHUB_ENV
+        echo "CXX_x86_64_linux_android=$TOOLCHAIN/bin/x86_64-linux-android${API}-clang++" >> $GITHUB_ENV
+        echo "AR_x86_64_linux_android=$TOOLCHAIN/bin/llvm-ar" >> $GITHUB_ENV
+        echo "CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER=$TOOLCHAIN/bin/x86_64-linux-android${API}-clang" >> $GITHUB_ENV
+
+        # Shared CMake / generic settings
+        echo "CMAKE_TOOLCHAIN_FILE=$NDK_ROOT/build/cmake/android.toolchain.cmake" >> $GITHUB_ENV
+        echo "ANDROID_PLATFORM=21" >> $GITHUB_ENV
+      shell: bash

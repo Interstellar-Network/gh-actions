@@ -4,13 +4,11 @@ description: "Install Intel SGX SDK"
 inputs:
   # NOTE: vs Intels docs: we DO NOT need the vars related to "Sixth, PSW"
   sdk_url:
-    description: "default to 2.17"
-    required: false
-    default: "https://download.01.org/intel-sgx/sgx-linux/2.17.1/distro/ubuntu20.04-server/sgx_linux_x64_sdk_2.17.101.1.bin"
+    description: "URL to the Intel SGX SDK .bin installer"
+    required: true
   bin_url:
-    description: "default to 2.17"
-    required: false
-    default: "https://download.01.org/intel-sgx/sgx-linux/2.17/as.ld.objdump.r4.tar.gz"
+    description: "URL to the as.ld.objdump binutils tarball matching sdk_url"
+    required: true
   binutils_dist:
     description: "SHOULD match the internal path a dir in bin_url above"
     required: false
@@ -19,10 +17,26 @@ inputs:
     description: "INTEL_BUILT"
     required: false
     default: "INTEL_BUILT"
+  gcc_version:
+    description: "GCC version required by SGX SDK."
+    required: false
+    default: "12"
 
 runs:
   using: "composite"
   steps:
+    - name: Install SGX-compatible GCC
+      run: |
+        if ! command -v g++-${{ inputs.gcc_version }} &> /dev/null; then
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends g++-${{ inputs.gcc_version }}
+        fi
+        sudo update-alternatives --install /usr/bin/cc cc /usr/bin/gcc-${{ inputs.gcc_version }} 110
+        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${{ inputs.gcc_version }} 110
+        sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-${{ inputs.gcc_version }} 110
+        cc --version
+        gcc --version
+        g++ --version
+      shell: bash
     - name: Install Intel SGX
       run: |
         curl -o sdk.sh ${{ inputs.sdk_url }}

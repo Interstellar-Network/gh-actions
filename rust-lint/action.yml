@@ -6,6 +6,10 @@ inputs:
     description: "working-directory is only supported for 'run' action NOT 'uses' so we need to DIY"
     required: false
     default: "${{ github.workspace }}"
+  cache-variant:
+    description: "Variant identifier for cache key disambiguation (e.g. strategy.job-index for matrix jobs). One cache entry per variant — no parallel race."
+    required: false
+    default: ""
   fmt_args:
     description: "args passed to cargo fmt"
     required: false
@@ -14,30 +18,203 @@ inputs:
     description: "args passed to cargo fmt"
     required: false
     default: "-- -D warnings"
+  restore_cache:
+    description: "Whether to restore cache. Set \"false\" for intermediate calls in consolidated jobs (the first call already populated disk)."
+    required: false
+    default: "true"
+  save_cache:
+    description: "Whether to save cache at end. Set \"false\" for intermediate calls in consolidated jobs (only the last should save)."
+    required: false
+    default: "true"
 
 runs:
   using: "composite"
   steps:
+    ############################################################################
+    # Resolve cache provider: env.CACHE_BACKEND (exported by prepare) or 'github'.
+
+    - name: Resolve cache provider
+      id: resolve-provider
+      run: |
+        PROVIDER="${CACHE_BACKEND:-github}"
+        echo "provider=$PROVIDER" >> "$GITHUB_OUTPUT"
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+
+    ############################################################################
+    # Sccache is content-addressable
+    # finds the most recent sccache cache from any branch; sccache validates which
+    # objects are still valid internally. No Cargo.lock needed.
+    #
+    # When cache-variant is set (matrix jobs), append it for per-variant isolation.
+
+    - name: Set sccache cache config
+      id: sccache-config
+      run: |
+        VARIANT="${{ inputs.cache-variant }}"
+        echo "path=~/.cache/sccache" >> "$GITHUB_OUTPUT"
+        if [ -n "$VARIANT" ]; then
+          echo "key=sccache-${{ runner.os }}-${{ runner.arch }}-${VARIANT}-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+        else
+          echo "key=sccache-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+        fi
+        echo "restore-keys<<EOF" >> "$GITHUB_OUTPUT"
+        if [ -n "$VARIANT" ]; then
+          echo "sccache-${{ runner.os }}-${{ runner.arch }}-${VARIANT}-" >> "$GITHUB_OUTPUT"
+        else
+          echo "sccache-${{ runner.os }}-${{ runner.arch }}-" >> "$GITHUB_OUTPUT"
+        fi
+        echo "EOF" >> "$GITHUB_OUTPUT"
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+    - name: sccache restore (GitHub)
+      id: restore-sccache-github
+      if: inputs.restore_cache == 'true' && steps.resolve-provider.outputs.provider != 'warp'
+      uses: actions/cache/restore@v5
+      with:
+        path: ${{ steps.sccache-config.outputs.path }}
+        key: ${{ steps.sccache-config.outputs.key }}
+        restore-keys: ${{ steps.sccache-config.outputs.restore-keys }}
+
+    - name: sccache restore (WarpBuilds)
+      id: restore-sccache-warp
+      if: inputs.restore_cache == 'true' && steps.resolve-provider.outputs.provider == 'warp'
+      uses: WarpBuilds/cache/restore@v1
+      with:
+        path: ${{ steps.sccache-config.outputs.path }}
+        key: ${{ steps.sccache-config.outputs.key }}
+        restore-keys: ${{ steps.sccache-config.outputs.restore-keys }}
+
+    ############################################################################
+    # Cargo registry + git db restore (no target/ — sccache handles compilation
+    # caching. target/ is too large and would exhaust GitHub's 10 GB limit).
+
+    - name: Set cargo cache config
+      id: cargo-config
+      run: |
+        TRIPLE="${RUST_TARGET_TRIPLE:-unknown}"
+        COMPILER="${RUST_COMPILER_ID:-unknown}"
+        VARIANT="${{ inputs.cache-variant }}"
+        echo "path<<EOF" >> "$GITHUB_OUTPUT"
+        echo "~/.cargo/registry/" >> "$GITHUB_OUTPUT"
+        echo "~/.cargo/git/db/" >> "$GITHUB_OUTPUT"
+        echo "EOF" >> "$GITHUB_OUTPUT"
+        if [ -n "$VARIANT" ]; then
+          echo "key=cargo-${{ runner.os }}-${{ runner.arch }}-${COMPILER}-${TRIPLE}-${VARIANT}-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+        else
+          echo "key=cargo-${{ runner.os }}-${{ runner.arch }}-${COMPILER}-${TRIPLE}-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+        fi
+        echo "restore-keys<<EOF" >> "$GITHUB_OUTPUT"
+        if [ -n "$VARIANT" ]; then
+          echo "cargo-${{ runner.os }}-${{ runner.arch }}-${COMPILER}-${TRIPLE}-${VARIANT}-" >> "$GITHUB_OUTPUT"
+        fi
+        echo "cargo-${{ runner.os }}-${{ runner.arch }}-${COMPILER}-${TRIPLE}-" >> "$GITHUB_OUTPUT"
+        echo "cargo-${{ runner.os }}-${{ runner.arch }}-${COMPILER}-" >> "$GITHUB_OUTPUT"
+        echo "cargo-${{ runner.os }}-${{ runner.arch }}-" >> "$GITHUB_OUTPUT"
+        echo "EOF" >> "$GITHUB_OUTPUT"
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+
+    - name: cargo restore (GitHub)
+      id: restore-cargo-github
+      if: inputs.restore_cache == 'true' && steps.resolve-provider.outputs.provider != 'warp'
+      uses: actions/cache/restore@v5
+      with:
+        path: ${{ steps.cargo-config.outputs.path }}
+        key: ${{ steps.cargo-config.outputs.key }}
+        restore-keys: ${{ steps.cargo-config.outputs.restore-keys }}
+
+    - name: cargo restore (WarpBuilds)
+      id: restore-cargo-warp
+      if: inputs.restore_cache == 'true' && steps.resolve-provider.outputs.provider == 'warp'
+      uses: WarpBuilds/cache/restore@v1
+      with:
+        path: ${{ steps.cargo-config.outputs.path }}
+        key: ${{ steps.cargo-config.outputs.key }}
+        restore-keys: ${{ steps.cargo-config.outputs.restore-keys }}
+
+    ############################################################################
+    # Zero stats after restore so the final stats reflect only this run.
+
+    - name: Zero sccache/ccache stats after restore
+      if: always() && inputs.save_cache == 'true'
+      run: |
+        sccache --zero-stats 2>/dev/null || true
+        ccache --zero-stats 2>/dev/null || true
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+
+    ############################################################################
+    # Lint — each step runs only when its args input is non-empty.
+    # Set fmt_args="" or clippy_args="" to skip the respective step.
+
     - name: Run cargo fmt
+      if: ${{ inputs.fmt_args != '' }}
       run: cargo fmt ${{ inputs.fmt_args }}
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
     # NOTE: cargo check: clippy internally runs "cargo check" so no point in doing it manually
     - name: Run cargo clippy
+      if: ${{ inputs.clippy_args != '' }}
       run: cargo clippy ${{ inputs.clippy_args }}
       shell: bash
       working-directory: ${{ inputs.working-directory }}
 
-    # TODO move into separate action? ideally into a JS action "post" that setup ccache?
-    - name: Print ccache/sccache stats
-      # display stats even if tests failed
-      if: always()
+    ############################################################################
+    # Cache save (always, even on failure). Since sccache has a SHA-based key
+    # (unique per commit), the save always succeeds — no race with parallel jobs.
+
+    - name: Print cache stats
+      if: always() && inputs.save_cache == 'true'
       run: |
-        ccache --show-stats || echo "ccache not found!"
-        sccache --show-stats || echo "ccache sccache found!"
+        ccache --show-stats 2>/dev/null || echo "ccache not found!"
+        sccache --show-stats 2>/dev/null || echo "sccache not found!"
       shell: bash
       working-directory: ${{ inputs.working-directory }}
+
+    - name: Stop sccache server before saving
+      if: always() && inputs.save_cache == 'true'
+      run: sccache --stop-server 2>/dev/null || true
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+
+    - name: Export cache keys for save
+      id: export-keys
+      if: always() && inputs.save_cache == 'true'
+      run: |
+        echo "sccache-key=${{ steps.sccache-config.outputs.key }}" >> "$GITHUB_OUTPUT"
+        echo "cargo-key=${{ steps.cargo-config.outputs.key }}" >> "$GITHUB_OUTPUT"
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+    - uses: actions/cache/save@v5
+      if: always() && inputs.save_cache == 'true' && steps.export-keys.outputs.sccache-key != '' && steps.resolve-provider.outputs.provider != 'warp'
+      with:
+        key: ${{ steps.export-keys.outputs.sccache-key }}
+        path: ~/.cache/sccache
+
+    - uses: WarpBuilds/cache/save@v1
+      if: always() && inputs.save_cache == 'true' && steps.export-keys.outputs.sccache-key != '' && steps.resolve-provider.outputs.provider == 'warp'
+      with:
+        key: ${{ steps.export-keys.outputs.sccache-key }}
+        path: ~/.cache/sccache
+
+    - uses: actions/cache/save@v5
+      if: always() && inputs.save_cache == 'true' && steps.export-keys.outputs.cargo-key != '' && steps.resolve-provider.outputs.provider != 'warp'
+      with:
+        key: ${{ steps.export-keys.outputs.cargo-key }}
+        path: |
+          ~/.cargo/registry/
+          ~/.cargo/git/db/
+
+    - uses: WarpBuilds/cache/save@v1
+      if: always() && inputs.save_cache == 'true' && steps.export-keys.outputs.cargo-key != '' && steps.resolve-provider.outputs.provider == 'warp'
+      with:
+        key: ${{ steps.export-keys.outputs.cargo-key }}
+        path: |
+          ~/.cargo/registry/
+          ~/.cargo/git/db/
+
 
     # TODO cargo install
     # do we call "cargo build --profile={{ matrix.build }}" manually or not needed?
