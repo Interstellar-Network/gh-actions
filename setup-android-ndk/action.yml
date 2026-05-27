@@ -25,8 +25,7 @@ inputs:
     required: true
   ndk-version:
     description: "NDK version to install via sdkmanager"
-    required: false
-    default: "28.0.13004108"
+    required: true
     # MUST stay in sync with:
     #   Interstellar-Network/wallet-app-internal/shared/build.gradle.kts  (ndkVersion)
     #   Interstellar-Network/wallet-app-internal/.github/workflows/android.yml  (sdkmanager ndk;...)

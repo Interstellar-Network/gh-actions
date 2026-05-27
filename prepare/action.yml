@@ -41,6 +41,18 @@ inputs:
     description: "Cache backend for downstream save actions. Exported as CACHE_BACKEND env var so build actions auto-detect. Use 'warp' for WarpBuilds/cache or 'github' (default) for standard actions/cache."
     required: false
     default: "github"
+  gcc_version:
+    description: "GCC version to install (e.g. '11', '16'). Defaults to latest."
+    required: false
+    default: "16"
+  ccache_version:
+    description: "ccache version to install"
+    required: false
+    default: "4.13.6"
+  mold_version:
+    description: "mold linker version to install"
+    required: false
+    default: "2.41.0"
 
 runs:
   using: "composite"
@@ -71,37 +83,26 @@ runs:
     # - you must make sure "check-compiler-exists" job paths/version match with job "Install compiler"
 
     - name: Check compiler
+      if: ${{ inputs.gcc_version != '' }}
       id: check-compiler-exists
       run: |
-        echo "compiler-exists=$(command -v g++-11 &> /dev/null && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
+        echo "compiler-exists=$(command -v g++-${{ inputs.gcc_version }} &> /dev/null && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
       shell: bash
 
-    # WARNING: if you update
     - name: Install compiler
-      if: (!fromJSON(steps.check-compiler-exists.outputs.compiler-exists))
+      if: ${{ inputs.gcc_version != '' && !fromJSON(steps.check-compiler-exists.outputs.compiler-exists) }}
       # cf /ci-images/ci-base-cpp.dockerfile
-      # "build-essential would work too, but:
-      # - install gcc 9 instead of 10
-      # - also dep on make, and dpkg-XXX
       # NOTE: g++ dep on gcc-N so this is fine, also libc-dev and libstdc++-10-dev"
       run: |
-        sudo apt-get update && sudo apt-get install -y --no-install-recommends g++-11
+        sudo apt-get update && sudo apt-get install -y --no-install-recommends g++-${{ inputs.gcc_version }}
       shell: bash
 
-    # DO NOT use eg "if: (!fromJSON(steps.check-compiler-exists.outputs.compiler-exists))"
-    # b/c on GH's "ubuntu-latest" VM g++-11 is already installed and the default anyway
-    # which is what CMake would use
-    # TODO? is it better to use env vars CC/CXX?
     - name: Make the new compiler the default
-      # cf /ci-images/ci-base-cpp.dockerfile
-      # "build-essential would work too, but:
-      # - install gcc 9 instead of 10
-      # - also dep on make, and dpkg-XXX
-      # NOTE: g++ dep on gcc-N so this is fine, also libc-dev and libstdc++-10-dev"
+      if: ${{ inputs.gcc_version != '' }}
       run: |
-        sudo update-alternatives --install /usr/bin/cc cc /usr/bin/gcc-11 100
-        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 100
-        sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 100
+        sudo update-alternatives --install /usr/bin/cc cc /usr/bin/gcc-${{ inputs.gcc_version }} 100
+        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${{ inputs.gcc_version }} 100
+        sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-${{ inputs.gcc_version }} 100
         cc --version
         gcc --version
         g++ --version
@@ -157,13 +158,11 @@ runs:
       run: |
         mkdir /tmp/ccache
         cd /tmp/ccache
-        wget -O ccache.tar.xz https://github.com/ccache/ccache/releases/download/v${CCACHE_VERSION}/ccache-${CCACHE_VERSION}-linux-x86_64.tar.xz
+        wget -O ccache.tar.xz https://github.com/ccache/ccache/releases/download/v${{ inputs.ccache_version }}/ccache-${{ inputs.ccache_version }}-linux-x86_64-glibc.tar.xz
         tar -xf ccache.tar.xz --strip-components=1
         chmod +x ccache
         sudo mv ccache /usr/local/bin/ccache
         ccache --show-config
-      env:
-        CCACHE_VERSION: 4.7.4
       shell: bash
 
     # https://cmake.org/cmake/help/latest/variable/CMAKE_LANG_COMPILER_LAUNCHER.html#variable:CMAKE_%3CLANG%3E_COMPILER_LAUNCHER
@@ -206,10 +205,8 @@ runs:
     - name: Install mold(linker)
       if: (!fromJSON(steps.check-mold-exists.outputs.mold-exists))
       run: |
-        wget -O- https://github.com/rui314/mold/releases/download/v$MOLD_VERSION/mold-$MOLD_VERSION-$(uname -m)-linux.tar.gz | sudo tar -C /usr/local --strip-components=1 -xzf -
+        wget -O- https://github.com/rui314/mold/releases/download/v${{ inputs.mold_version }}/mold-${{ inputs.mold_version }}-$(uname -m)-linux.tar.gz | sudo tar -C /usr/local --strip-components=1 -xzf -
         sudo chmod +x /usr/local/bin/mold
-      env:
-        MOLD_VERSION: 2.37.0
       shell: bash
 
     # DO NOT use eg "if: (!fromJSON(steps.check-mold-exists.outputs.mold-exists))"

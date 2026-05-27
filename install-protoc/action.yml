@@ -4,8 +4,7 @@ description: "Install Intel SGX SDK"
 inputs:
   protoc_linux-x86_64_url:
     description: "URL of the desired protoc prebuilt binaries"
-    required: false
-    default: "https://github.com/protocolbuffers/protobuf/releases/download/v21.12/protoc-21.12-linux-x86_64.zip"
+    required: true
 
 runs:
   using: "composite"
