@@ -17,10 +17,26 @@ inputs:
     description: "INTEL_BUILT"
     required: false
     default: "INTEL_BUILT"
+  gcc_version:
+    description: "GCC version required by SGX SDK."
+    required: false
+    default: "12"
 
 runs:
   using: "composite"
   steps:
+    - name: Install SGX-compatible GCC
+      run: |
+        if ! command -v g++-${{ inputs.gcc_version }} &> /dev/null; then
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends g++-${{ inputs.gcc_version }}
+        fi
+        sudo update-alternatives --install /usr/bin/cc cc /usr/bin/gcc-${{ inputs.gcc_version }} 110
+        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${{ inputs.gcc_version }} 110
+        sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-${{ inputs.gcc_version }} 110
+        cc --version
+        gcc --version
+        g++ --version
+      shell: bash
     - name: Install Intel SGX
       run: |
         curl -o sdk.sh ${{ inputs.sdk_url }}
