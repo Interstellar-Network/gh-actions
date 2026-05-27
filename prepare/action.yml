@@ -91,21 +91,24 @@ runs:
 
     - name: Install compiler
       if: ${{ inputs.gcc_version != '' && !fromJSON(steps.check-compiler-exists.outputs.compiler-exists) }}
-      # cf /ci-images/ci-base-cpp.dockerfile
       # NOTE: g++ dep on gcc-N so this is fine, also libc-dev and libstdc++-10-dev"
       run: |
-        sudo apt-get update && sudo apt-get install -y --no-install-recommends g++-${{ inputs.gcc_version }}
+        sudo apt-get update && sudo apt-get install -y --no-install-recommends g++-${{ inputs.gcc_version }} || echo "g++-${{ inputs.gcc_version }} not available in apt repos"
       shell: bash
 
     - name: Make the new compiler the default
       if: ${{ inputs.gcc_version != '' }}
       run: |
-        sudo update-alternatives --install /usr/bin/cc cc /usr/bin/gcc-${{ inputs.gcc_version }} 100
-        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${{ inputs.gcc_version }} 100
-        sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-${{ inputs.gcc_version }} 100
-        cc --version
-        gcc --version
-        g++ --version
+        if command -v gcc-${{ inputs.gcc_version }} &> /dev/null; then
+          sudo update-alternatives --install /usr/bin/cc cc /usr/bin/gcc-${{ inputs.gcc_version }} 100
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${{ inputs.gcc_version }} 100
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-${{ inputs.gcc_version }} 100
+          cc --version
+          gcc --version
+          g++ --version
+        else
+          echo "gcc-${{ inputs.gcc_version }} not installed (not available on this OS version). Using system default."
+        fi
       shell: bash
 
     ############################################################################
